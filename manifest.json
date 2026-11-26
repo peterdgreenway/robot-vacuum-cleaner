@@ -4,7 +4,7 @@
   "version": "1.3.1",
   "description": "Compact Roborock status for Vestaboard Note (3x15) with room support",
   "author": "peterdgreenway",
-  "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum",
+  "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum_cleaner",
   "documentation": "README.md",
   "icon": "robot",
   "category": "home",
