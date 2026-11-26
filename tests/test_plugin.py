@@ -7,7 +7,7 @@ from __init__ import RobotVacuumPlugin, _fit
 
 @pytest.fixture
 def plugin():
-    return RobotVacuumPlugin({"id": "robot_vacuum", "version": "1.2.0"})
+    return RobotVacuumPlugin({"id": "robot_vacuum_cleaner", "version": "1.2.0"})
 
 
 def test_fit_truncates():

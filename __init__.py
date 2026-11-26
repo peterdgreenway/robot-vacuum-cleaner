@@ -64,7 +64,7 @@ class RobotVacuumPlugin(PluginBase):
 
     @property
     def plugin_id(self) -> str:
-        return "robot_vacuum"
+        return "robot_vacuum_cleaner"
 
     def validate_config(self, config: Dict[str, Any]) -> List[str]:
         errors = []

@@ -1,10 +1,10 @@
 {
-  "id": "robot_vacuum",
+  "id": "robot_vacuum_cleaner",
   "name": "Robot Vacuum (Roborock)",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Compact Roborock status for Vestaboard Note (3x15) with room support",
   "author": "peterdgreenway",
-  "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum_cleaner",
+  "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum",
   "documentation": "README.md",
   "icon": "robot",
   "category": "home",

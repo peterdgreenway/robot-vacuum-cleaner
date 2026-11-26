@@ -55,9 +55,9 @@ asyncio.run(main())
 Exactly three lines:
 
 ```
-{{robot_vacuum.line1}}
-{{robot_vacuum.line2}}
-{{robot_vacuum.line3}}
+{{robot_vacuum_cleaner.line1}}
+{{robot_vacuum_cleaner.line2}}
+{{robot_vacuum_cleaner.line3}}
 ```
 
 That is the complete, guaranteed-to-fit layout.
