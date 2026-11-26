@@ -1,79 +1,80 @@
-# Robot Vacuum (Roborock) Plugin for FiestaBoard
+# Robot Vacuum (Roborock) – Vestaboard Note
 
-Live status, battery, fan speed, clean statistics and consumable levels from a Roborock vacuum using the official cloud API.
+**Strict 3 × 15 character layout.**
 
-Designed for **Vestaboard Note** (15×3) but works on Flagship and Note arrays as well.
+Live status from a Roborock vacuum (tested with **Saros 20**).  
+When the robot is cleaning and the current room can be resolved, the third line shows the room name.
 
 **Author:** peterdgreenway  
-**Repository:** https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum
+**Repo:** https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum
 
 ---
 
-## Features
-
-- Real-time vacuum status (Cleaning / Docked / Returning / Paused …)
-- Battery percentage + simple icon hint
-- Fan speed
-- Current clean time & area
-- Consumable remaining life (main brush, side brush, filter, sensors)
-- Compact `formatted` line that fits a Note in one glance
-- Caching + configurable refresh interval
-
-## Template Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `robot_vacuum.name` | Device name | `ROBOROCK S8` |
-| `robot_vacuum.status` | Raw status string | `Cleaning` |
-| `robot_vacuum.activity` | High-level activity | `CLEANING` |
-| `robot_vacuum.battery` | Battery % | `87%` |
-| `robot_vacuum.battery_icon` | FULL / HIGH / LOW / CRIT | `FULL` |
-| `robot_vacuum.fan_speed` | Current fan mode | `max` |
-| `robot_vacuum.clean_time` | Minutes of current job | `28m` |
-| `robot_vacuum.clean_area` | Square metres cleaned | `42m2` |
-| `robot_vacuum.error` | Error code or `OK` | `OK` |
-| `robot_vacuum.docked` | `true` / `false` | `false` |
-| `robot_vacuum.charging` | `true` / `false` | `false` |
-| `robot_vacuum.cleaning` | `true` / `false` | `true` |
-| `robot_vacuum.mop_attached` | `true` / `false` | `true` |
-| `robot_vacuum.main_brush` | Remaining life % | `82%` |
-| `robot_vacuum.side_brush` | Remaining life % | `91%` |
-| `robot_vacuum.filter` | Remaining life % | `76%` |
-| `robot_vacuum.sensor` | Remaining life % | `88%` |
-| `robot_vacuum.formatted` | Compact Note line | `CLEANING  87%` |
-| `robot_vacuum.last_updated` | Time of last fetch | `14:32` |
-
-## Example Note Layout (15×3)
+## Recommended page (exactly 3 lines)
 
 ```
-{{robot_vacuum.name}}
-{{robot_vacuum.formatted}}
-{{robot_vacuum.clean_area}} {{robot_vacuum.clean_time}}
+{{robot_vacuum.line1}}
+{{robot_vacuum.line2}}
+{{robot_vacuum.line3}}
 ```
 
-## Example Flagship Layout
+### Example output (Saros 20)
 
 ```
-     ROBOT VACUUM
-{{robot_vacuum.name}}
-{{robot_vacuum.activity}}  {{robot_vacuum.battery}}
-FAN {{robot_vacuum.fan_speed}}
-{{robot_vacuum.clean_area}}  {{robot_vacuum.clean_time}}
-BRUSH {{robot_vacuum.main_brush}}  FILT {{robot_vacuum.filter}}
+SAROS 20
+CLEAN  87%
+KITCHEN
 ```
+
+```
+SAROS 20
+CHARGE 100%
+READY
+```
+
+```
+SAROS 20
+PAUSE  42%
+LIVING ROOM
+```
+
+- While cleaning → `line3` prefers the **room name** (if available).
+- Otherwise → area + time, or `READY`.
+
+---
+
+## Variables (all ≤ 15 characters)
+
+| Variable | Max | Description | Example |
+|----------|-----|-------------|---------|
+| `line1` | 15 | Device name | `SAROS 20` |
+| `line2` | 15 | Activity + battery | `CLEAN  87%` |
+| `line3` | 15 | Room **or** area/time | `KITCHEN` |
+| `name` | 15 | Device name | `SAROS 20` |
+| `activity` | 15 | Short status | `CLEAN` |
+| `battery` | 4 | Battery | `87%` |
+| `status` | 15 | Same as activity | `CLEAN` |
+| `room` | 15 | Current room (or —) | `KITCHEN` |
+| `area_time` | 15 | Area + minutes | `42M2 28M` |
+| `error` | 15 | OK or error code | `OK` |
+
+---
+
+## Room support
+
+The plugin tries to resolve the current room via the map/segment data that the Saros 20 (and other map-capable models) expose.  
+
+If the room cannot be determined (robot docked, map not yet loaded, older firmware, etc.) it falls back cleanly to area/time or `READY`. Room names are truncated to 15 characters.
+
+---
 
 ## Requirements
-
-- FiestaBoard ≥ 9.0.0
-- `python-roborock` installed inside the FiestaBoard container / environment
 
 ```bash
 pip install python-roborock
 ```
 
-## Setup
-
-See **[docs/SETUP.md](docs/SETUP.md)** for the one-time login flow that obtains the long-lived UserData token.
+See **docs/SETUP.md** for the one-time UserData token.
 
 ## License
 
