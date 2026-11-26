@@ -1,8 +1,8 @@
 {
-  "id": "robot_vacuum_cleaner",
+  "id": "robot_vacuum",
   "name": "Robot Vacuum (Roborock)",
-  "version": "1.3.2",
-  "description": "Compact Roborock status for Vestaboard Note (3x15) with room support",
+  "version": "1.5.0",
+  "description": "Roborock live status fields for FiestaBoard, with Saros 20 dock, cleaning-mode and room support",
   "author": "peterdgreenway",
   "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum",
   "documentation": "README.md",
@@ -12,68 +12,24 @@
   "settings_schema": {
     "type": "object",
     "properties": {
-      "email": {
-        "type": "string",
-        "title": "Roborock email",
-        "description": "Account email used with the Roborock app"
-      },
-      "user_data_json": {
-        "type": "string",
-        "title": "UserData JSON",
-        "description": "One-time UserData token (see docs/SETUP.md)",
-        "ui:widget": "textarea"
-      },
-      "device_name": {
-        "type": "string",
-        "title": "Device name filter",
-        "description": "Optional – leave blank for first vacuum"
-      },
-      "refresh_seconds": {
-        "type": "integer",
-        "title": "Refresh (seconds)",
-        "default": 120,
-        "minimum": 60,
-        "maximum": 900
-      }
+      "email": {"type": "string", "title": "Roborock email", "description": "Account email used with the Roborock app"},
+      "user_data_json": {"type": "string", "title": "UserData JSON", "description": "One-time UserData token (see docs/SETUP.md)", "ui:widget": "textarea"},
+      "device_name": {"type": "string", "title": "Device name filter", "description": "Optional – leave blank for first vacuum"},
+      "refresh_seconds": {"type": "integer", "title": "Refresh (seconds)", "default": 120, "minimum": 60, "maximum": 900}
     },
     "required": ["email", "user_data_json"]
   },
   "variables": {
     "simple": [
-      "line1",
-      "line2",
-      "line3",
-      "name",
-      "activity",
-      "battery",
-      "status",
-      "room",
-      "area_time",
-      "error"
+      "line1", "line2", "line3", "name", "battery_level", "battery",
+      "is_charging", "is_docked", "dock_state", "robot_state", "activity", "cleaning_activity",
+      "current_room", "room", "cleaning_mode", "cleaning_progress",
+      "cleaning_time_minutes", "area_cleaned_m2", "do_not_disturb",
+      "map_present", "error", "has_error", "status", "area_time"
     ]
   },
-  "max_lengths": {
-    "line1": 15,
-    "line2": 15,
-    "line3": 15,
-    "name": 15,
-    "activity": 15,
-    "battery": 4,
-    "status": 15,
-    "room": 15,
-    "area_time": 15,
-    "error": 15
-  },
-  "teaser": "CLEAN  87%",
-  "previews": [
-    {
-      "device_type": "note",
-      "rows": [
-        "SAROS 20",
-        "CLEAN  87%",
-        "KITCHEN"
-      ]
-    }
-  ],
+  "max_lengths": {"line1": 15, "line2": 15, "line3": 15},
+  "teaser": "SAROS 20 - 34% VACUUM KITCHEN",
+  "previews": [{"device_type": "note", "rows": ["SAROS 20 - 34%", "VACUUMING", "KITCHEN"]}],
   "fiestaboard_version": ">=9.0.0"
 }

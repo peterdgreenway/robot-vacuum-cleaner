@@ -1,81 +1,60 @@
-# Robot Vacuum (Roborock) – Vestaboard Note
+# Robot Vacuum (Roborock) – FiestaBoard
 
-**Strict 3 × 15 character layout.**
+Version **1.5.0** adds normalised, human-readable status fields intended for use in FiestaBoard templates. It has been developed against the Roborock Saros 20 and the `python-roborock` V1 API.
 
-Live status from a Roborock vacuum (tested with **Saros 20**).  
-When the robot is cleaning and the current room can be resolved, the third line shows the room name.
+## Example Vestaboard Note
 
-**Author:** peterdgreenway  
-**Repo:** https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum
-
----
-
-## Recommended page (exactly 3 lines)
-
-```
-{{robot_vacuum_cleaner.line1}}
-{{robot_vacuum_cleaner.line2}}
-{{robot_vacuum_cleaner.line3}}
-```
-
-### Example output (Saros 20)
-
-```
-SAROS 20
-CLEAN  87%
+```text
+SAROS 20 - 34%
+VACUUMING
 KITCHEN
 ```
 
-```
-SAROS 20
-CHARGE 100%
-READY
-```
+Use the `line1`, `line2` and `line3` variables for the ready-made 3 × 15 character lines, or compose your own display from the individual fields.
 
-```
-SAROS 20
-PAUSE  42%
-LIVING ROOM
-```
+## Fields
 
-- While cleaning → `line3` prefers the **room name** (if available).
-- Otherwise → area + time, or `READY`.
+| Variable | Example | Meaning |
+|---|---|---|
+| `name` | `Roborock Saros 20` | Device name |
+| `battery_level` | `34` | Battery percentage as a number |
+| `battery` | `34%` | Battery with percent sign |
+| `is_charging` | `Yes` / `No` / `Unknown` | Actual charging state; delayed charging is not treated as charging |
+| `is_docked` | `Yes` / `No` / `Unknown` | Whether docked, independently of charging |
+| `dock_state` | `Charging`, `Delayed Charge`, `Fully Charged` | Human-readable dock state |
+| `robot_state` | `cleaning`, `charging`, `returning` | Normalised robot state |
+| `activity` | `Cleaning`, `Charging` | General robot activity/state |
+| `cleaning_activity` | `Vacuuming`, `Mopping`, `Vac & Mop`, `Cruise` | Cleaning action inferred from the selected cleaning mode |
+| `current_room` | `Kitchen` | Resolved current room name, or `Unknown` |
+| `room` | `Kitchen` | Alias for `current_room` |
+| `cleaning_mode` | `Vac then Mop`, `Vac And Mop`, `Mop`, `Vacuum`, `Cruise` | Human-readable selected mode when exposed by the API |
+| `cleaning_progress` | `65` | Cleaning progress percentage |
+| `cleaning_time_minutes` | `18.0` | Elapsed cleaning time in minutes |
+| `area_cleaned_m2` | `24.5` | Area cleaned in square metres |
+| `do_not_disturb` | `Yes` / `No` / `Unknown` | DND enabled state |
+| `map_present` | `Yes` / `No` / `Unknown` | Map-present flag |
+| `error` | `None` | Error description |
+| `has_error` | `Yes` / `No` | Whether an error is reported |
 
----
+Boolean values are exposed as **Yes**, **No** or **Unknown**. Missing data is never silently converted to No.
 
-## Variables (all ≤ 15 characters)
+## Dock and mode labels
 
-| Variable | Max | Description | Example |
-|----------|-----|-------------|---------|
-| `line1` | 15 | Device name | `SAROS 20` |
-| `line2` | 15 | Activity + battery | `CLEAN  87%` |
-| `line3` | 15 | Room **or** area/time | `KITCHEN` |
-| `name` | 15 | Device name | `SAROS 20` |
-| `activity` | 15 | Short status | `CLEAN` |
-| `battery` | 4 | Battery | `87%` |
-| `status` | 15 | Same as activity | `CLEAN` |
-| `room` | 15 | Current room (or —) | `KITCHEN` |
-| `area_time` | 15 | Area + minutes | `42M2 28M` |
-| `error` | 15 | OK or error code | `OK` |
+The plugin uses these exact display labels where the Roborock API supplies a recognised value:
 
----
+- Dock: `Charging`, `Delayed Charge`, `Fully Charged`
+- Cleaning mode: `Vac then Mop`, `Vac And Mop`, `Mop`, `Vacuum`, `Cruise`
 
-## Room support
+A docked robot waiting for its configured off-peak charging window is reported as `Delayed Charge` and `is_charging: No`.
 
-The plugin tries to resolve the current room via the map/segment data that the Saros 20 (and other map-capable models) expose.  
+## Room, routines and zones
 
-If the room cannot be determined (robot docked, map not yet loaded, older firmware, etc.) it falls back cleanly to area/time or `READY`. Room names are truncated to 15 characters.
+Room names are resolved from available current-segment and map/room information when the installed library and firmware expose it. If the current room cannot be matched confidently, the field is `Unknown` rather than a guessed room. Routines and user-defined multi-room zones are not yet executed or separately represented in this release; they are a subsequent development item.
 
----
+## Connection lifecycle
 
-## Requirements
+Each refresh creates, uses and closes its Roborock device manager within one asyncio event loop. This avoids reusing MQTT tasks and connections across the separate event loops created by repeated synchronous FiestaBoard refresh calls.
 
-```bash
-pip install python-roborock
-```
+## Setup
 
-See **docs/SETUP.md** for the one-time UserData token.
-
-## License
-
-MIT
+See `docs/SETUP.md` for the credential setup process. Keep the UserData JSON private and never include it in diagnostic logs or screenshots.
