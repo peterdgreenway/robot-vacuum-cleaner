@@ -1,8 +1,8 @@
 {
   "id": "robot_vacuum",
   "name": "Robot Vacuum (Roborock)",
-  "version": "1.3.0",
-  "description": "Compact Roborock status for Vestaboard Note (3×15) – includes current room on Saros 20 and similar models",
+  "version": "1.3.1",
+  "description": "Compact Roborock status for Vestaboard Note (3x15) with room support",
   "author": "peterdgreenway",
   "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum",
   "documentation": "README.md",
@@ -64,7 +64,7 @@
     "area_time": 15,
     "error": 15
   },
-  "teaser": "CLEAN  87% KITCHEN",
+  "teaser": "CLEAN  87%",
   "previews": [
     {
       "device_type": "note",
