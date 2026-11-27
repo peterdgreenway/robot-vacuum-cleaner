@@ -151,19 +151,26 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
     cleaning_name = enum_text(cleaning_value)
     charge_name = enum_text(charge_value)
     # Off-peak waiting is docked but deliberately not charging.
-    dock_state = state_name
-    if "off_peak" in state_name.lower() or "waiting" in state_name.lower():
+    # On this Saros 20, state=charging with charge_status=0 and a battery
+    # below 100% is the scheduled off-peak waiting condition observed by the
+    # user. It is docked, but deliberately not drawing charge.
+    charge_raw = getattr(charge_value, "value", charge_value)
+    if "off_peak" in state_name.lower() or "waiting" in state_name.lower() or (state_name.lower() == "charging" and charge_raw in (0, "0") and battery is not None and battery < 100):
         dock_state = "Delayed Charge"
-    elif "charging" in state_name.lower() and "not" not in state_name.lower():
-        dock_state = "Charging"
+        charging = False
+        is_docked = True
     elif battery == 100 and "charging" in state_name.lower():
         dock_state = "Fully Charged"
-
-    charging = ("charging" in state_name.lower() and "off_peak" not in state_name.lower())
-    is_docked = any(x in state_name.lower() for x in ("charging", "docked", "waiting", "idle"))
-    if "off_peak" in state_name.lower():
-        is_docked = True
         charging = False
+        is_docked = True
+    elif "charging" in state_name.lower():
+        dock_state = "Charging"
+        charging = True
+        is_docked = True
+    else:
+        dock_state = state_name
+        charging = False
+        is_docked = any(x in state_name.lower() for x in ("docked", "waiting", "idle"))
 
     mode_text = enum_text(mode)
     if mode_text == "Unknown":
@@ -180,8 +187,8 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
         "is_docked": "Yes" if is_docked else ("No" if state_value is not None else "Unknown"),
         "dock_state": dock_state,
         "charge_status": charge_name,
-        "activity": "Returning to dock" if str(returning).lower() in ("1", "true") else cleaning_name,
-        "cleaning_activity": "Returning to dock" if str(returning).lower() in ("1", "true") else cleaning_name,
+        "activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
+        "cleaning_activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
         "current_room": "Unknown",
         "room": "Unknown",
         "cleaning_mode": mode_text,
