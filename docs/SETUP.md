@@ -1,63 +1,36 @@
-# Setup – Robot Vacuum (Note 3×15)
+# Setup – FiestaBoard Roborock Service plugin
 
-## 1. Install dependency
+## Prerequisite
 
-```bash
-pip install python-roborock
-```
+Deploy the separate Roborock Service container on the NAS first. Confirm these endpoints:
 
-## 2. Get the long-lived UserData token (once)
+- `http://192.168.100.99:8088/health` – health check
+- `http://192.168.100.99:8088/status` – current robot status
+- `http://192.168.100.99:8088/` – service dashboard and Refresh Now control
 
-```bash
-pip install "python-roborock[cli]"
-roborock login --email your@email.com
-```
+Do not put Roborock credentials or UserData JSON into FiestaBoard. Credentials belong in the service container's protected credentials directory.
 
-Enter the code from your email, then dump the token:
+## Install
 
-```bash
-python -c "
-from roborock.cli import RoborockContext
-import json
-ctx = RoborockContext()
-data = ctx.user_data.as_dict() if hasattr(ctx.user_data,'as_dict') else ctx.user_data.__dict__
-print(json.dumps(data, indent=2, default=str))
-"
-```
+Use the FiestaBoard GitHub plugin installer with:
 
-Or use this script:
+`https://github.com/peterdgreenway/robot-vacuum-cleaner`
 
-```python
-import asyncio, json
-from roborock.web_api import RoborockApiClient
+Configure the plugin's service URL as `http://192.168.100.99:8088`.
 
-async def main():
-    email = input("Email: ").strip()
-    client = RoborockApiClient(username=email)
-    await client.request_code()
-    code = input("Code from email: ").strip()
-    ud = await client.code_login(code)
-    data = ud.as_dict() if hasattr(ud,"as_dict") else ud.__dict__
-    print(json.dumps(data, indent=2, default=str))
+## Settings
 
-asyncio.run(main())
-```
+- Polling start: 07:15
+- Polling end: 21:00
+- Polling interval: 60 seconds
+- Daily tracked-operation safety limit: 1,000
 
-## 3. Configure plugin
+The plugin sends these settings to the service. The service is responsible for enforcing its schedule and usage ceiling.
 
-1. FiestaBoard → Integrations → enable **Robot Vacuum (Roborock)**
-2. Paste **email** and the full **UserData JSON**
-3. Optional: device name filter
-4. Save
+## Refresh Now
 
-## 4. Create the Note page
+Open the service dashboard at `http://192.168.100.99:8088/` and use its Refresh Now control. FiestaBoard's documented data-plugin interface does not expose a native settings-page action button.
 
-Exactly three lines:
+## Security
 
-```
-{{robot_vacuum.line1}}
-{{robot_vacuum.line2}}
-{{robot_vacuum.line3}}
-```
-
-That is the complete, guaranteed-to-fit layout.
+Keep the service on your trusted LAN. Do not configure router port forwarding for port 8088. Do not share credentials, token files or screenshots containing them.
