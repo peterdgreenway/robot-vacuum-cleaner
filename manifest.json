@@ -111,6 +111,8 @@
       "last_run_date",
       "last_run_time",
       "last_run_datetime",
+      "last_run_room",
+      "last_run_operation",
       "last_refresh_date",
       "last_refresh_time",
       "last_refresh_datetime",
