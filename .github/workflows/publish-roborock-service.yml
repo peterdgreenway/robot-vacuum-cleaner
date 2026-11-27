@@ -1,0 +1,42 @@
+name: Build and publish Roborock Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "service/**"
+      - ".github/workflows/publish-roborock-service.yml"
+      - "docker-compose-ugreen.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./service
+          file: ./service/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/roborock-service:1.0.0
+            ghcr.io/${{ github.repository_owner }}/roborock-service:latest
