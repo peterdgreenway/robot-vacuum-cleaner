@@ -27,6 +27,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 CREDENTIALS_FILE = Path(os.getenv("CREDENTIALS_FILE", "/credentials/roborock_credentials.json"))
 CONFIG_FILE = DATA_DIR / "config.json"
 USAGE_FILE = DATA_DIR / "api_usage.json"
+LAST_RUN_FILE = DATA_DIR / "last_run.json"
 TZ = ZoneInfo("Europe/London")
 
 DEFAULT_CONFIG = {
@@ -78,6 +79,71 @@ def enum_text(value: Any, default: str = "Unknown") -> str:
     if value is None:
         return default
     return str(getattr(value, "display_name", getattr(value, "value", value)))
+
+
+
+def load_last_run() -> dict[str, Any]:
+    saved = read_json(LAST_RUN_FILE, {})
+    if not isinstance(saved, dict):
+        saved = {}
+    return {
+        "last_run_room": saved.get("last_run_room", "NOT AVAILABLE"),
+        "last_run_operation": saved.get("last_run_operation", "NOT AVAILABLE"),
+        "active_run": bool(saved.get("active_run", False)),
+    }
+
+
+def is_active_run(status: Any) -> bool:
+    state_value = getattr(status, "state", None)
+    raw_state = getattr(state_value, "value", state_value)
+    state_name = enum_text(state_value, "").lower()
+    return (
+        raw_state in (5, 18, "5", "18")
+        or any(word in state_name for word in ("cleaning", "mopping", "vacuuming", "patrol", "cruise"))
+    )
+
+
+def operation_for_run(status: Any) -> str:
+    state_value = getattr(status, "state", None)
+    state_name = enum_text(state_value, "").lower()
+    if "patrol" in state_name or "cruise" in state_name:
+        return "PATROLLING"
+
+    mode = enum_text(getattr(status, "current_cleaning_mode", None), "").lower()
+    compact = mode.replace(" ", "_").replace("-", "_").replace("_", "")
+    if "vacuumthenmop" in compact or "vacthenmop" in compact:
+        return "VAC THEN MOP"
+    if any(token in compact for token in ("vacandmop", "vacuumandmop", "vacuummop")):
+        return "VAC AND MOP"
+    if "mop" in compact and "vac" not in compact:
+        return "MOP"
+    if "vac" in compact:
+        return "VACUUM"
+    return "NOT AVAILABLE"
+
+
+def update_last_run(status: Any, current_room: str) -> dict[str, str]:
+    saved = load_last_run()
+    active = is_active_run(status)
+
+    # Start a clean history record when a new cleaning/patrol run begins.
+    if active and not saved["active_run"]:
+        saved["last_run_room"] = "NOT AVAILABLE"
+        saved["last_run_operation"] = "NOT AVAILABLE"
+
+    if active:
+        if current_room and current_room.strip().lower() not in ("unknown", "not available"):
+            saved["last_run_room"] = current_room.strip()
+        operation = operation_for_run(status)
+        if operation != "NOT AVAILABLE":
+            saved["last_run_operation"] = operation
+
+    saved["active_run"] = active
+    write_json(LAST_RUN_FILE, saved)
+    return {
+        "last_run_room": saved["last_run_room"],
+        "last_run_operation": saved["last_run_operation"],
+    }
 
 
 def number(value: Any, default: float = 0) -> float:
@@ -362,6 +428,7 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
             except Exception:
                 log.exception("Could not refresh Roborock cleaning summary; retaining unavailable totals")
         data = current_status_data(state["status"], state["device"], current_room)
+        data.update(update_last_run(state["status"], current_room))
         state["data"] = data
         state["last_refresh"] = datetime.now(TZ).isoformat(timespec="seconds")
         counts = usage()
@@ -376,7 +443,10 @@ def status_response() -> dict[str, Any]:
     used = int(counts.get("tracked_operations", 0))
     limit = max(1, int(cfg["daily_operation_limit"]))
     data = dict(state["data"])
+    saved_last_run = load_last_run()
     data.update({
+        "last_run_room": saved_last_run["last_run_room"],
+        "last_run_operation": saved_last_run["last_run_operation"],
         "last_refresh": state["last_refresh"] or data.get("last_refresh", "Unknown"),
         "night_start": cfg["night_start"],
         "night_end": cfg["night_end"],
@@ -439,7 +509,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.6", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.7", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
