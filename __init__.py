@@ -30,6 +30,34 @@ def _fit(value: Any, width: int = 15) -> str:
     return _text(value, "").upper().strip()[:width]
 
 
+def _display_activity(data: Dict[str, Any]) -> str:
+    """Translate Roborock's internal state/activity codes into short display labels."""
+    state = str(data.get("robot_state", data.get("state", ""))).lower()
+    activity = str(data.get("activity", data.get("cleaning_activity", ""))).lower()
+    mode = str(data.get("cleaning_mode", "")).lower()
+    dock_state = str(data.get("dock_state", "")).lower()
+
+    if state in ("segment_cleaning", "cleaning") or "segment_clean" in activity:
+        if mode == "vacuum":
+            return "VACUUMING"
+        if mode == "mop":
+            return "MOPPING"
+        if mode in ("vac_and_mop", "vacuum_and_mop"):
+            return "CLEANING"
+        return "CLEANING"
+    if "return" in state or "return" in activity:
+        return "RETURNING"
+    if "wash" in state or "wash" in activity or "wash" in dock_state:
+        return "WASHING MOP"
+    if state in ("charging", "charge") or "charging" in activity:
+        return "CHARGING"
+    if str(data.get("is_docked", "")).lower() in ("yes", "true") or state in ("idle", "sleeping"):
+        return "DOCKED"
+    if activity and activity not in ("unknown", "none"):
+        return activity.replace("_", " ").upper()
+    return "IDLE"
+
+
 class RobotVacuumPlugin(PluginBase):
     """Read Roborock status from the companion service."""
 
@@ -126,7 +154,7 @@ class RobotVacuumPlugin(PluginBase):
             data["error"] = _text(data.get("error"), "None")
             data["name"] = _text(data.get("name"), "Roborock")
             data["line1"] = _fit(f"{data['name']} {data['battery']}")
-            data["line2"] = _fit(data["activity"])
+            data["line2"] = _fit(_display_activity(data))
             data["line3"] = _fit(data["current_room"])
             self._cache = data
             self._cache_ts = now
