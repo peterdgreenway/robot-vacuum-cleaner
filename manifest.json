@@ -1,5 +1,5 @@
 {
-  "id": "robot_vacuum",
+  "id": "robot_vacuum_cleaner",
   "name": "Robot Vacuum (Roborock)",
   "version": "2.0.0",
   "description": "Saros 20 status from the companion Roborock service; configurable schedule and usage tracking.",
