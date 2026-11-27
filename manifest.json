@@ -1,7 +1,7 @@
 {
   "id": "robot_vacuum_cleaner",
   "name": "Robot Vacuum (Roborock)",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Saros 20 status with configurable time-of-day refresh intervals and usage tracking.",
   "author": "peterdgreenway",
   "repository": "https://github.com/peterdgreenway/robot-vacuum-cleaner",
