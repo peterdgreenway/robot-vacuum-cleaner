@@ -1,35 +1,102 @@
 {
   "id": "robot_vacuum",
   "name": "Robot Vacuum (Roborock)",
-  "version": "1.5.0",
-  "description": "Roborock live status fields for FiestaBoard, with Saros 20 dock, cleaning-mode and room support",
+  "version": "2.0.0",
+  "description": "Saros 20 status from the companion Roborock service; configurable schedule and usage tracking.",
   "author": "peterdgreenway",
-  "repository": "https://github.com/peterdgreenway/fiestaboard-plugin--robot-vacuum",
+  "repository": "https://github.com/peterdgreenway/robot-vacuum-cleaner",
   "documentation": "README.md",
   "icon": "robot",
   "category": "home",
-  "min_refresh_seconds": 60,
+  "min_refresh_seconds": 30,
   "settings_schema": {
     "type": "object",
     "properties": {
-      "email": {"type": "string", "title": "Roborock email", "description": "Account email used with the Roborock app"},
-      "user_data_json": {"type": "string", "title": "UserData JSON", "description": "One-time UserData token (see docs/SETUP.md)", "ui:widget": "textarea"},
-      "device_name": {"type": "string", "title": "Device name filter", "description": "Optional – leave blank for first vacuum"},
-      "refresh_seconds": {"type": "integer", "title": "Refresh (seconds)", "default": 120, "minimum": 60, "maximum": 900}
+      "service_url": {
+        "type": "string",
+        "title": "Roborock service URL",
+        "default": "http://192.168.100.99:8088",
+        "description": "LAN URL of the separate Roborock service container"
+      },
+      "polling_start": {
+        "type": "string",
+        "title": "Polling start (24-hour)",
+        "default": "07:15"
+      },
+      "polling_end": {
+        "type": "string",
+        "title": "Polling end (24-hour)",
+        "default": "21:00"
+      },
+      "polling_interval_seconds": {
+        "type": "integer",
+        "title": "Polling interval (seconds)",
+        "default": 60,
+        "minimum": 30,
+        "maximum": 3600
+      },
+      "daily_operation_limit": {
+        "type": "integer",
+        "title": "Daily tracked-operation safety limit",
+        "default": 1000,
+        "minimum": 1,
+        "maximum": 100000
+      }
     },
-    "required": ["email", "user_data_json"]
+    "required": [
+      "service_url"
+    ]
   },
   "variables": {
     "simple": [
-      "line1", "line2", "line3", "name", "battery_level", "battery",
-      "is_charging", "is_docked", "dock_state", "robot_state", "activity", "cleaning_activity",
-      "current_room", "room", "cleaning_mode", "cleaning_progress",
-      "cleaning_time_minutes", "area_cleaned_m2", "do_not_disturb",
-      "map_present", "error", "has_error", "status", "area_time"
+      "line1",
+      "line2",
+      "line3",
+      "name",
+      "battery_level",
+      "battery",
+      "is_charging",
+      "is_docked",
+      "dock_state",
+      "robot_state",
+      "activity",
+      "cleaning_activity",
+      "current_room",
+      "room",
+      "cleaning_mode",
+      "cleaning_progress",
+      "cleaning_time_minutes",
+      "area_cleaned_m2",
+      "do_not_disturb",
+      "map_present",
+      "error",
+      "has_error",
+      "last_refresh",
+      "polling_start",
+      "polling_end",
+      "polling_interval_seconds",
+      "tracked_operations_today",
+      "daily_operation_limit",
+      "api_usage_percent",
+      "operations_remaining",
+      "next_refresh"
     ]
   },
-  "max_lengths": {"line1": 15, "line2": 15, "line3": 15},
+  "max_lengths": {
+    "line1": 15,
+    "line2": 15,
+    "line3": 15
+  },
   "teaser": "SAROS 20 - 34% VACUUM KITCHEN",
-  "previews": [{"device_type": "note", "rows": ["SAROS 20 - 34%", "VACUUMING", "KITCHEN"]}],
+  "previews": [
+    {
+      "device_type": "note",
+      "rows": [
+        "SAROS 20 - 34%",
+        "VACUUMING",
+        "KITCHEN"
+      ]
+    }
+  ],
   "fiestaboard_version": ">=9.0.0"
 }
