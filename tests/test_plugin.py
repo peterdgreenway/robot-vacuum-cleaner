@@ -31,6 +31,7 @@ def test_display_activity_uses_friendly_labels():
     }) == "MOPPING"
     assert _display_activity({"robot_state": "charging"}) == "CHARGING"
     assert _display_activity({"robot_state": "returning"}) == "RETURNING"
+    assert _display_activity({"robot_state": "cruising"}) == "CRUISING"
 
 
 def test_validate_config():
