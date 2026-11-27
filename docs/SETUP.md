@@ -20,12 +20,12 @@ Configure the plugin's service URL as `http://192.168.100.99:8088`.
 
 ## Settings
 
-- Polling start: 07:15
-- Polling end: 21:00
-- Polling interval: 60 seconds
+- Night patrol: 03:00–04:00, every 15 minutes
+- Peak cleaning: 07:30–10:30, every 10 minutes
+- All other times: every 60 minutes
 - Daily tracked-operation safety limit: 1,000
 
-The plugin sends these settings to the service. The service is responsible for enforcing its schedule and usage ceiling.
+Refreshes are aligned to each window's start (for example, 03:00, 03:15 and 03:30). The service enforces the schedule and usage ceiling.
 
 ## Refresh Now
 
