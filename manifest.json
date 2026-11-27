@@ -1,8 +1,8 @@
 {
   "id": "robot_vacuum_cleaner",
   "name": "Robot Vacuum (Roborock)",
-  "version": "2.0.0",
-  "description": "Saros 20 status from the companion Roborock service; configurable schedule and usage tracking.",
+  "version": "2.1.0",
+  "description": "Saros 20 status with configurable time-of-day refresh intervals and usage tracking.",
   "author": "peterdgreenway",
   "repository": "https://github.com/peterdgreenway/robot-vacuum-cleaner",
   "documentation": "README.md",
@@ -18,22 +18,46 @@
         "default": "http://192.168.100.99:8088",
         "description": "LAN URL of the separate Roborock service container"
       },
-      "polling_start": {
+      "night_start": {
         "type": "string",
-        "title": "Polling start (24-hour)",
-        "default": "07:15"
+        "title": "Night patrol start (24-hour)",
+        "default": "03:00"
       },
-      "polling_end": {
+      "night_end": {
         "type": "string",
-        "title": "Polling end (24-hour)",
-        "default": "21:00"
+        "title": "Night patrol end (24-hour)",
+        "default": "04:00"
       },
-      "polling_interval_seconds": {
+      "night_interval_seconds": {
         "type": "integer",
-        "title": "Polling interval (seconds)",
-        "default": 60,
+        "title": "Night patrol refresh interval (seconds)",
+        "default": 900,
         "minimum": 30,
-        "maximum": 3600
+        "maximum": 86400
+      },
+      "peak_start": {
+        "type": "string",
+        "title": "Peak activity start (24-hour)",
+        "default": "07:30"
+      },
+      "peak_end": {
+        "type": "string",
+        "title": "Peak activity end (24-hour)",
+        "default": "10:30"
+      },
+      "peak_interval_seconds": {
+        "type": "integer",
+        "title": "Peak activity refresh interval (seconds)",
+        "default": 600,
+        "minimum": 30,
+        "maximum": 86400
+      },
+      "default_interval_seconds": {
+        "type": "integer",
+        "title": "All other times refresh interval (seconds)",
+        "default": 3600,
+        "minimum": 30,
+        "maximum": 86400
       },
       "daily_operation_limit": {
         "type": "integer",
@@ -72,9 +96,13 @@
       "error",
       "has_error",
       "last_refresh",
-      "polling_start",
-      "polling_end",
-      "polling_interval_seconds",
+      "night_start",
+      "night_end",
+      "night_interval_seconds",
+      "peak_start",
+      "peak_end",
+      "peak_interval_seconds",
+      "default_interval_seconds",
       "tracked_operations_today",
       "daily_operation_limit",
       "api_usage_percent",
