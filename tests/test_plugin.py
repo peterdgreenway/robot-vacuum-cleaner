@@ -1,7 +1,7 @@
 """Basic unit tests for the FiestaBoard service-backed plugin."""
 from unittest.mock import patch
 
-from __init__ import RobotVacuumPlugin, _fit
+from __init__ import RobotVacuumPlugin, _display_activity, _fit
 
 
 def plugin():
@@ -17,6 +17,22 @@ def test_fit():
     assert _fit(None) == ""
 
 
+
+def test_display_activity_uses_friendly_labels():
+    assert _display_activity({
+        "robot_state": "segment_cleaning",
+        "activity": "segment_clean_not_complete",
+        "cleaning_mode": "vacuum",
+    }) == "VACUUMING"
+    assert _display_activity({
+        "robot_state": "segment_cleaning",
+        "activity": "segment_clean_not_complete",
+        "cleaning_mode": "mop",
+    }) == "MOPPING"
+    assert _display_activity({"robot_state": "charging"}) == "CHARGING"
+    assert _display_activity({"robot_state": "returning"}) == "RETURNING"
+
+
 def test_validate_config():
     p = plugin()
     assert p.validate_config({"service_url": "http://nas:8088", "night_interval_seconds": 900, "peak_interval_seconds": 600, "default_interval_seconds": 3600}) == []
@@ -29,14 +45,14 @@ def test_fetch_status_and_schedule():
 
     def fake(path, method="GET", payload=None):
         if path == "/status":
-            return {"data": {"name": "Saros 20", "battery_level": 42, "is_charging": False, "is_docked": True, "activity": "Vacuuming", "current_room": "Kitchen"}}
+            return {"data": {"name": "Saros 20", "battery_level": 42, "is_charging": False, "is_docked": True, "activity": "segment_clean_not_complete", "robot_state": "segment_cleaning", "cleaning_mode": "vacuum", "current_room": "Kitchen"}}
         return {}
 
     with patch.object(p, "_request", side_effect=fake):
         result = p.fetch_data()
     assert result.available
     assert result.data["battery"] == "42%"
-    assert result.data["line3"] == "KITCHEN"
+    assert result.data["line2"] == "VACUUMING"\n    assert result.data["line3"] == "KITCHEN"
 
 
 def test_time_of_day_schedule_is_sent_to_service():
