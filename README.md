@@ -13,14 +13,14 @@
 1. Deploy and test the Roborock Service first.
 2. Install this repository through FiestaBoard's GitHub plugin installer.
 3. Set **Roborock service URL** to `http://192.168.100.99:8088`.
-4. Set the polling window and interval. Defaults are 07:15–21:00 and 60 seconds.
+4. Set the time-of-day refresh schedule. Defaults are 03:00–04:00 every 15 minutes, 07:30–10:30 every 10 minutes and every 60 minutes at all other times.
 5. Save and confirm the plugin can read the service status.
 
 The service should remain LAN-only. Do not forward port 8088 from your router or expose it to the public internet.
 
 ## Variables
 
-`battery_level`, `battery`, `is_charging`, `is_docked`, `dock_state`, `robot_state`, `activity`, `cleaning_activity`, `current_room`, `room`, `cleaning_mode`, `cleaning_progress`, `cleaning_time_minutes`, `area_cleaned_m2`, `do_not_disturb`, `map_present`, `error`, `has_error`, `last_refresh`, `polling_start`, `polling_end`, `polling_interval_seconds`, `tracked_operations_today`, `daily_operation_limit`, `api_usage_percent`, `operations_remaining`, `next_refresh`.
+`battery_level`, `battery`, `is_charging`, `is_docked`, `dock_state`, `robot_state`, `activity`, `cleaning_activity`, `current_room`, `room`, `cleaning_mode`, `cleaning_progress`, `cleaning_time_minutes`, `area_cleaned_m2`, `do_not_disturb`, `map_present`, `error`, `has_error`, `last_refresh`, `night_start`, `night_end`, `night_interval_seconds`, `peak_start`, `peak_end`, `peak_interval_seconds`, `default_interval_seconds`, `tracked_operations_today`, `daily_operation_limit`, `api_usage_percent`, `operations_remaining`, `next_refresh`.
 
 Boolean values are presented as Yes/No/Unknown where possible. Missing room or status values remain Unknown rather than being guessed.
 
