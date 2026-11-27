@@ -85,6 +85,32 @@ def number(value: Any, default: float = 0) -> float:
     except (TypeError, ValueError):
         return default
 
+def seconds_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    if hasattr(value, "total_seconds"):
+        try:
+            return float(value.total_seconds())
+        except (TypeError, ValueError):
+            return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def format_duration(seconds: float | None) -> str:
+    if seconds is None or seconds < 0:
+        return "Unknown"
+    total = int(round(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
 
 def build_user_params(raw: dict[str, Any]) -> UserParams:
     account = raw["account"]
@@ -137,8 +163,17 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
     charge_value = getattr(status, "charge_status", None)
     cleaning_value = getattr(status, "in_cleaning", None)
     battery = getattr(status, "battery", None)
-    clean_area = number(getattr(status, "clean_area", 0))
-    clean_time = getattr(status, "clean_time", None)
+    raw_clean_area = getattr(status, "clean_area", None)
+    session_area_m2 = getattr(status, "square_meter_clean_area", None)
+    if session_area_m2 is None and raw_clean_area is not None:
+        session_area_m2 = number(raw_clean_area) / 1000000
+    clean_time_seconds = seconds_value(getattr(status, "clean_time", None))
+    clean_summary = getattr(getattr(device, "v1_properties", None), "clean_summary", None)
+    total_time_seconds = seconds_value(getattr(clean_summary, "clean_time", None))
+    total_area_m2 = getattr(clean_summary, "square_meter_clean_area", None)
+    if total_area_m2 is not None:
+        total_area_m2 = number(total_area_m2)
+    total_clean_count = getattr(clean_summary, "clean_count", None)
     clean_percent = getattr(status, "clean_percent", None)
     returning = getattr(status, "in_returning", None)
     error_value = getattr(status, "error_code", None)
@@ -193,8 +228,17 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
         "room": "Unknown",
         "cleaning_mode": mode_text,
         "cleaning_progress": clean_percent if clean_percent is not None else "Unknown",
-        "cleaning_time_minutes": clean_time if clean_time is not None else "Unknown",
-        "area_cleaned_m2": round(clean_area / 1000000, 1),
+        # Status clean_time is reported by Roborock in seconds.
+        "cleaning_time_seconds": round(clean_time_seconds) if clean_time_seconds is not None else "Unknown",
+        "cleaning_time_minutes": round(clean_time_seconds / 60, 1) if clean_time_seconds is not None else "Unknown",
+        "cleaning_time": format_duration(clean_time_seconds),
+        "area_cleaned_m2": round(number(session_area_m2), 1) if session_area_m2 is not None else "Unknown",
+        # Clean-summary values are lifetime totals, separate from the current/last session.
+        "total_cleaning_time_seconds": round(total_time_seconds) if total_time_seconds is not None else "Unknown",
+        "total_cleaning_time_minutes": round(total_time_seconds / 60, 1) if total_time_seconds is not None else "Unknown",
+        "total_cleaning_time": format_duration(total_time_seconds),
+        "total_cleaned_area_m2": round(number(total_area_m2), 1) if total_area_m2 is not None else "Unknown",
+        "total_cleaning_count": total_clean_count if total_clean_count is not None else "Unknown",
         "error": enum_text(error_value, "Unknown"),
         "has_error": "No" if getattr(error_value, "value", error_value) in (0, "0", None) else "Yes",
         "dock_error": enum_text(dock_error),
@@ -235,6 +279,15 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
             log.warning("Polling paused: tracked-operation safety threshold reached")
             return state["data"]
         await state["status"].refresh()
+        # Lifetime totals are provided by the separate clean-summary trait.
+        # Refresh it independently so the totals do not get confused with the
+        # current/last cleaning session values in Status.
+        clean_summary = getattr(state["device"].v1_properties, "clean_summary", None)
+        if clean_summary is not None:
+            try:
+                await clean_summary.refresh()
+            except Exception:
+                log.exception("Could not refresh Roborock cleaning summary; retaining unavailable totals")
         data = current_status_data(state["status"], state["device"])
         state["data"] = data
         state["last_refresh"] = datetime.now(TZ).isoformat(timespec="seconds")
