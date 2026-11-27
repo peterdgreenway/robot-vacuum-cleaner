@@ -1,6 +1,6 @@
 # Robot Vacuum (Roborock) – FiestaBoard
 
-**Version 2.0.0** connects FiestaBoard to the separate Roborock Service running on your NAS. The service owns Roborock authentication, device connections, polling, schedule enforcement and tracked-operation accounting. FiestaBoard does not connect directly to Roborock.
+**Version 2.1.0** connects FiestaBoard to the separate Roborock Service running on your NAS. The service owns Roborock authentication, device connections, polling, schedule enforcement and tracked-operation accounting. FiestaBoard does not connect directly to Roborock.
 
 ## Architecture
 
