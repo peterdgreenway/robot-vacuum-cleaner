@@ -48,11 +48,12 @@ class RobotVacuumPlugin(PluginBase):
         if not base.startswith(("http://", "https://")):
             errors.append("Service URL must begin with http:// or https://")
         try:
-            interval = int(config.get("polling_interval_seconds", 60))
-            if interval < 30 or interval > 3600:
-                errors.append("Polling interval must be between 30 and 3600 seconds")
+            for key in ("night_interval_seconds", "peak_interval_seconds", "default_interval_seconds"):
+                interval = int(config.get(key, 3600))
+                if interval < 30 or interval > 86400:
+                    errors.append(f"{key} must be between 30 and 86400 seconds")
         except (TypeError, ValueError):
-            errors.append("Polling interval must be a number")
+            errors.append("Refresh intervals must be numeric")
         return errors
 
     def on_config_change(self, old: Dict[str, Any], new: Dict[str, Any]) -> None:
@@ -83,15 +84,19 @@ class RobotVacuumPlugin(PluginBase):
 
     def fetch_data(self) -> PluginResult:
         try:
-            interval = max(30, int(self.config.get("polling_interval_seconds", 60)))
+            cache_seconds = max(30, int(self.config.get("plugin_cache_seconds", 30)))
             now = datetime.now(timezone.utc).timestamp()
-            if self._cache and now - self._cache_ts < interval:
+            if self._cache and now - self._cache_ts < cache_seconds:
                 return PluginResult(available=True, data=self._cache)
 
             schedule = {
-                "polling_start": str(self.config.get("polling_start", "07:15")),
-                "polling_end": str(self.config.get("polling_end", "21:00")),
-                "polling_interval_seconds": interval,
+                "night_start": str(self.config.get("night_start", "03:00")),
+                "night_end": str(self.config.get("night_end", "04:00")),
+                "night_interval_seconds": max(30, int(self.config.get("night_interval_seconds", 900))),
+                "peak_start": str(self.config.get("peak_start", "07:30")),
+                "peak_end": str(self.config.get("peak_end", "10:30")),
+                "peak_interval_seconds": max(30, int(self.config.get("peak_interval_seconds", 600))),
+                "default_interval_seconds": max(30, int(self.config.get("default_interval_seconds", 3600))),
                 "daily_operation_limit": max(1, int(self.config.get("daily_operation_limit", 1000))),
             }
             try:
@@ -102,10 +107,8 @@ class RobotVacuumPlugin(PluginBase):
             status = self._request("/status")
             data = dict(status.get("data", status))
             data.setdefault("last_refresh", data.get("last_updated", "Unknown"))
-            data.setdefault("polling_start", schedule["polling_start"])
-            data.setdefault("polling_end", schedule["polling_end"])
-            data.setdefault("polling_interval_seconds", interval)
-            data.setdefault("daily_operation_limit", schedule["daily_operation_limit"])
+            for key, value in schedule.items():
+                data.setdefault(key, value)
 
             battery = data.get("battery_level", data.get("battery", "Unknown"))
             if isinstance(battery, str) and battery.endswith("%"):
