@@ -401,7 +401,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.2", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.3", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
@@ -475,6 +475,46 @@ async def get_room_diagnostic():
         command_error = f"{type(exc).__name__}: {exc}"
         log.warning("GET_SEGMENT_STATUS diagnostic request failed: %s", command_error)
 
+    # Inspect public status fields and relevant device traits without calling
+    # additional Roborock commands or invoking trait refresh methods.
+    status_object = diagnostic_value(state["status"])
+    trait_diagnostics: dict[str, Any] = {}
+    keywords = ("segment", "room", "map", "status", "clean", "current")
+
+    for trait_name in dir(properties):
+        if trait_name.startswith("_") or not any(word in trait_name.lower() for word in keywords):
+            continue
+        try:
+            trait = getattr(properties, trait_name)
+        except Exception as exc:
+            trait_diagnostics[trait_name] = {"read_error": f"{type(exc).__name__}: {exc}"}
+            continue
+        if trait is None or callable(trait) or isinstance(trait, (str, int, float, bool, list, tuple, dict)):
+            continue
+
+        fields: dict[str, Any] = {}
+        try:
+            names = set(vars(trait).keys())
+        except TypeError:
+            names = set()
+        names.update(
+            name for name in dir(trait)
+            if not name.startswith("_") and any(word in name.lower() for word in keywords)
+        )
+        for field_name in sorted(names):
+            if field_name.startswith("_"):
+                continue
+            try:
+                field_value = getattr(trait, field_name)
+                if not callable(field_value):
+                    fields[field_name] = diagnostic_value(field_value)
+            except Exception as exc:
+                fields[field_name] = {"read_error": f"{type(exc).__name__}: {exc}"}
+        trait_diagnostics[trait_name] = {
+            "type": type(trait).__name__,
+            "fields": fields,
+        }
+
     return {
         "diagnostic_time": datetime.now(TZ).isoformat(timespec="seconds"),
         "device": str(getattr(state["device"], "name", "Roborock")),
@@ -484,12 +524,8 @@ async def get_room_diagnostic():
         "room_refresh_error": room_refresh_error,
         "get_segment_status": diagnostic_value(segment_status),
         "get_segment_status_error": command_error,
-        "status_fields": {
-            "current_map": diagnostic_value(getattr(state["status"], "current_map", None)),
-            "state": diagnostic_value(getattr(state["status"], "state", None)),
-            "in_cleaning": diagnostic_value(getattr(state["status"], "in_cleaning", None)),
-            "clean_percent": diagnostic_value(getattr(state["status"], "clean_percent", None)),
-        },
+        "status_fields": status_object,
+        "trait_diagnostics": trait_diagnostics,
     }
 
 
