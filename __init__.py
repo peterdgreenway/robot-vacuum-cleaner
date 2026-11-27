@@ -40,7 +40,7 @@ class RobotVacuumPlugin(PluginBase):
 
     @property
     def plugin_id(self) -> str:
-        return "robot_vacuum"
+        return "robot_vacuum_cleaner"
 
     def validate_config(self, config: Dict[str, Any]) -> List[str]:
         errors: List[str] = []
@@ -88,8 +88,6 @@ class RobotVacuumPlugin(PluginBase):
             if self._cache and now - self._cache_ts < interval:
                 return PluginResult(available=True, data=self._cache)
 
-            # The service remains the sole authority for polling and API budget.
-            # FiestaBoard sends desired schedule values; the service enforces them.
             schedule = {
                 "polling_start": str(self.config.get("polling_start", "07:15")),
                 "polling_end": str(self.config.get("polling_end", "21:00")),
