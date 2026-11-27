@@ -89,6 +89,8 @@ class RobotVacuumPlugin(PluginBase):
         super().__init__(manifest)
         self._cache: Dict[str, Any] = {}
         self._cache_ts = 0.0
+        self._last_run_room = "Unknown"
+        self._last_run_operation = "Unknown"
 
     @property
     def plugin_id(self) -> str:
@@ -181,6 +183,40 @@ class RobotVacuumPlugin(PluginBase):
                 data[key] = _text(data.get(key))
             data["current_room"] = _text(data.get("current_room", data.get("room")))
             data["room"] = data["current_room"]
+
+            # Preserve the most recent room and operation observed during a clean.
+            # Docked/charging/idle status must not overwrite the completed run.
+            state = str(data.get("robot_state", data.get("state", ""))).lower()
+            activity_code = str(data.get("activity", data.get("cleaning_activity", ""))).lower()
+            mode = str(data.get("cleaning_mode", "")).lower()
+            active_clean = state in ("segment_cleaning", "cleaning") or "segment_clean" in activity_code
+            if active_clean:
+                room = data["current_room"]
+                if room and room.lower() not in ("unknown", "none", "n/a"):
+                    self._last_run_room = room
+                operation_labels = {
+                    "vacuum": "VACUUM",
+                    "mop": "MOP",
+                    "vac_and_mop": "VAC AND MOP",
+                    "vacuum_and_mop": "VAC AND MOP",
+                }
+                if mode in operation_labels:
+                    self._last_run_operation = operation_labels[mode]
+                elif self._last_run_operation == "Unknown":
+                    self._last_run_operation = "CLEANING"
+
+            # Accept service-provided history as an initial value if available.
+            if self._last_run_room == "Unknown":
+                supplied_room = data.get("last_run_room")
+                if supplied_room and str(supplied_room).lower() not in ("unknown", "none", "n/a"):
+                    self._last_run_room = str(supplied_room)
+            if self._last_run_operation == "Unknown":
+                supplied_operation = data.get("last_run_operation")
+                if supplied_operation and str(supplied_operation).lower() not in ("unknown", "none", "n/a"):
+                    self._last_run_operation = str(supplied_operation)
+
+            data["last_run_room"] = self._last_run_room
+            data["last_run_operation"] = self._last_run_operation
             data["activity"] = _text(data.get("activity", data.get("cleaning_activity")))
             data["cleaning_activity"] = _text(data.get("cleaning_activity", data.get("activity")))
             data["cleaning_mode"] = _text(data.get("cleaning_mode"))
