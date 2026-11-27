@@ -361,16 +361,40 @@ async def dashboard():
 <title>Roborock Service</title><style>
 body{font:16px system-ui;max-width:760px;margin:35px auto;padding:0 18px;background:#f5f6f8;color:#20242a}
 main{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 12px #0001}
-button{background:#1769aa;color:white;border:0;padding:12px 18px;border-radius:8px;font-size:16px}
+button{background:#1769aa;color:white;border:0;padding:12px 18px;border-radius:8px;font-size:16px;cursor:pointer}
+button:disabled{opacity:.65;cursor:wait}
+#refresh-feedback{margin:12px 0;padding:10px 12px;border-radius:8px;background:#eef2f6;color:#394554;min-height:22px}
+#refresh-feedback.success{background:#e8f5ec;color:#176534}
+#refresh-feedback.error{background:#fdecec;color:#a12626}
+#refresh-feedback.busy{background:#e8f1fb;color:#17558b}
 pre{white-space:pre-wrap;background:#f1f3f5;padding:14px;border-radius:8px}
 </style></head><body><main><h1>Roborock Service</h1>
 <p>Separate service for FiestaBoard. Roborock credentials remain on this NAS.</p>
-<button onclick="refreshNow()">Refresh Now</button><h2>Current status</h2><pre id="status">Loading…</pre>
+<button id="refresh-button" onclick="refreshNow()">Refresh Now</button>
+<div id="refresh-feedback" role="status" aria-live="polite">Ready. Status refreshes automatically every 15 seconds.</div>
+<h2>Current status</h2><pre id="status">Loading…</pre>
 <h2>Polling configuration</h2><pre id="config">Loading…</pre>
 <script>
-async function load(){try{let s=await fetch('/status').then(r=>r.json());document.getElementById('status').textContent=JSON.stringify(s.data,null,2);
-let c=await fetch('/config').then(r=>r.json());document.getElementById('config').textContent=JSON.stringify(c,null,2)}catch(e){document.getElementById('status').textContent=String(e)}}
-async function refreshNow(){document.querySelector('button').disabled=true;try{let r=await fetch('/refresh',{method:'POST'});let j=await r.json();if(!r.ok)alert(j.detail||'Refresh failed')}finally{document.querySelector('button').disabled=false;load()}}
+async function load(){try{let s=await fetch('/status');if(!s.ok)throw new Error('Status request failed ('+s.status+')');s=await s.json();document.getElementById('status').textContent=JSON.stringify(s.data,null,2);
+let c=await fetch('/config');if(!c.ok)throw new Error('Configuration request failed ('+c.status+')');c=await c.json();document.getElementById('config').textContent=JSON.stringify(c,null,2)}catch(e){document.getElementById('status').textContent=String(e)}}
+async function refreshNow(){
+const button=document.getElementById('refresh-button');
+const feedback=document.getElementById('refresh-feedback');
+button.disabled=true;button.textContent='Refreshing…';
+feedback.className='busy';feedback.textContent='Contacting your Roborock and requesting a fresh status…';
+try{
+const r=await fetch('/refresh',{method:'POST'});
+const j=await r.json();
+if(!r.ok)throw new Error(j.detail||'Refresh failed (HTTP '+r.status+')');
+await load();
+const refreshed=(j.data&&j.data.last_refresh)?new Date(j.data.last_refresh).toLocaleTimeString():'just now';
+feedback.className='success';feedback.textContent='✓ Refresh successful — status updated at '+refreshed+'.';
+}catch(e){
+feedback.className='error';feedback.textContent='✕ Refresh failed — '+(e.message||String(e));
+}finally{
+button.disabled=false;button.textContent='Refresh Now';
+}
+}
 load();setInterval(load,15000);
 </script></main></body></html>""")
 
