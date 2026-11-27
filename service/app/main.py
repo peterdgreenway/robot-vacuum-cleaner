@@ -334,16 +334,20 @@ def status_response() -> dict[str, Any]:
 
 
 async def scheduler() -> None:
+    # Refresh immediately on service start, then follow the wall-clock schedule.
     while True:
         try:
             if operation_budget_allows():
                 await refresh_status()
+            else:
+                log.warning("Polling paused: tracked-operation safety threshold reached")
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             state["last_error"] = str(exc)
             state["data"] = {**state["data"], "available": False, "error": str(exc)}
             log.exception("Scheduled status refresh failed")
+
         cfg = config()
         used = int(usage().get("tracked_operations", 0))
         limit = max(1, int(cfg["daily_operation_limit"]))
