@@ -24,7 +24,7 @@ def test_timestamp_parts_use_london_format():
         "time": "18:11",
         "datetime": "27-NOV-26 18:11",
     }
-    assert _timestamp_parts(None)["datetime"] == "Unknown"
+    assert _timestamp_parts(None)["datetime"] == "NOT AVAILABLE"
 
 
 def test_display_activity_uses_friendly_labels():
@@ -114,7 +114,7 @@ def test_last_run_room_and_operation_survive_return_to_dock():
         {"data": {
             "name": "Saros 20", "battery_level": 40, "is_docked": True,
             "robot_state": "charging", "activity": "charging",
-            "cleaning_mode": "unknown", "current_room": "Unknown",
+            "cleaning_mode": "not available", "current_room": "NOT AVAILABLE",
         }},
     ]
 
@@ -133,7 +133,7 @@ def test_last_run_room_and_operation_survive_return_to_dock():
     assert second.available
     assert second.data["last_run_room"] == "Living room"
     assert second.data["last_run_operation"] == "VACUUM"
-    assert second.data["current_room"] == "Unknown"
+    assert second.data["current_room"] == "NOT AVAILABLE"
     assert second.data["line2"] == "CHARGING"
 
 
