@@ -5,7 +5,7 @@ from __init__ import RobotVacuumPlugin, _fit
 
 
 def plugin():
-    return RobotVacuumPlugin({"id": "robot_vacuum_cleaner", "version": "2.0.0"})
+    return RobotVacuumPlugin({"id": "robot_vacuum_cleaner", "version": "2.1.0"})
 
 
 def test_plugin_id_matches_manifest():
