@@ -316,33 +316,33 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
         await state["status"].refresh()
 
         # During cleaning, map content exposes the active room as vacuum_room.
-        # Resolve that segment ID against the current map's room names.
+        # Resolve it against a freshly refreshed mapping for the current map.
         current_room = "Unknown"
         robot_state = getattr(state["status"], "state", None)
         state_code = getattr(robot_state, "value", robot_state)
         if state_code in (5, 18, "5", "18"):
             properties = state["device"].v1_properties
             map_content = getattr(properties, "map_content", None)
+            maps = getattr(properties, "maps", None)
+            home = getattr(properties, "home", None)
             try:
                 if map_content is not None:
                     await map_content.refresh()
                 map_data = getattr(map_content, "map_data", None) if map_content is not None else None
                 vacuum_room = getattr(map_data, "vacuum_room", None)
-                if vacuum_room is not None:
-                    home = getattr(properties, "home", None)
-                    current_map_data = getattr(home, "current_map_data", None) if home is not None else None
-                    rooms = getattr(current_map_data, "rooms", None) or []
-                    if not rooms:
-                        maps = getattr(properties, "maps", None)
-                        map_info = getattr(maps, "current_map_info", None) if maps is not None else None
-                        if home is not None and map_info is not None:
-                            refreshed_map_info = await home._refresh_map_info(map_info)
-                            rooms = getattr(refreshed_map_info, "rooms", None) or []
-                    for room in rooms:
-                        segment_id = getattr(room, "segment_id", getattr(room, "id", None))
-                        if str(segment_id) == str(vacuum_room):
-                            current_room = str(getattr(room, "name", "Unknown"))
-                            break
+                if vacuum_room is not None and maps is not None and home is not None:
+                    # Match the diagnostic endpoint's proven safe approach:
+                    # refresh only the current map, never home.discover_home().
+                    await maps.refresh()
+                    current_map_info = getattr(maps, "current_map_info", None)
+                    if current_map_info is not None:
+                        refreshed_map_info = await home._refresh_map_info(current_map_info)
+                        rooms = getattr(refreshed_map_info, "rooms", None) or []
+                        for room in rooms:
+                            segment_id = getattr(room, "segment_id", getattr(room, "id", None))
+                            if str(segment_id) == str(vacuum_room):
+                                current_room = str(getattr(room, "name", "Unknown"))
+                                break
             except Exception as exc:
                 log.warning("Could not resolve current cleaning room: %s", exc)
 
@@ -433,7 +433,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.4", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.5", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
