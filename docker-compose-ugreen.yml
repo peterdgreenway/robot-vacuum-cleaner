@@ -1,0 +1,15 @@
+services:
+  roborock-service:
+    image: ghcr.io/peterdgreenway/roborock-service:1.0.0
+    container_name: roborock-service
+    platform: linux/amd64
+    ports:
+      - "192.168.100.99:8088:8088"
+    volumes:
+      - /volume1/docker/Roborock/data:/data
+      - /volume1/docker/Roborock/credentials:/credentials:ro
+    environment:
+      - TZ=Europe/London
+      - DATA_DIR=/data
+      - CREDENTIALS_FILE=/credentials/roborock_credentials.json
+    restart: unless-stopped

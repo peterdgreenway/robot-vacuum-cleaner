@@ -1,0 +1,371 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime, time
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
+
+from roborock.data.containers import UserData, RRiot, Reference
+from roborock.devices.device_manager import UserParams, create_device_manager
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+log = logging.getLogger("roborock-service")
+
+DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
+CREDENTIALS_FILE = Path(os.getenv("CREDENTIALS_FILE", "/credentials/roborock_credentials.json"))
+CONFIG_FILE = DATA_DIR / "config.json"
+USAGE_FILE = DATA_DIR / "api_usage.json"
+TZ = ZoneInfo("Europe/London")
+
+DEFAULT_CONFIG = {
+    "polling_start": "07:15",
+    "polling_end": "21:00",
+    "polling_interval_seconds": 60,
+    "daily_operation_limit": 1000,
+    "slowdown_percent": 80,
+    "stop_percent": 90,
+}
+state: dict[str, Any] = {
+    "manager": None, "device": None, "status": None,
+    "data": {"available": False, "name": "Roborock Saros 20", "error": "Waiting for credentials"},
+    "last_error": None, "last_refresh": None, "refresh_lock": asyncio.Lock(),
+    "scheduler_task": None, "usage": {},
+}
+
+
+def read_json(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return default
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(value, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def config() -> dict[str, Any]:
+    saved = read_json(CONFIG_FILE, {})
+    return {**DEFAULT_CONFIG, **(saved if isinstance(saved, dict) else {})}
+
+
+def today_key() -> str:
+    return datetime.now(TZ).date().isoformat()
+
+
+def usage() -> dict[str, Any]:
+    saved = read_json(USAGE_FILE, {})
+    if not isinstance(saved, dict) or saved.get("date") != today_key():
+        saved = {"date": today_key(), "tracked_operations": 0}
+    state["usage"] = saved
+    return saved
+
+
+def enum_text(value: Any, default: str = "Unknown") -> str:
+    if value is None:
+        return default
+    return str(getattr(value, "display_name", getattr(value, "value", value)))
+
+
+def number(value: Any, default: float = 0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def build_user_params(raw: dict[str, Any]) -> UserParams:
+    account = raw["account"]
+    saved_user = raw["user_data"]
+    saved_rriot = saved_user["rriot"]
+    saved_reference = saved_rriot["r"]
+    reference = Reference(
+        r=saved_reference.get("r"), a=saved_reference.get("a"),
+        m=saved_reference.get("m"), l=saved_reference.get("l"),
+    )
+    rriot = RRiot(
+        u=saved_rriot["u"], s=saved_rriot["s"], h=saved_rriot["h"],
+        k=saved_rriot["k"], r=reference,
+    )
+    user_data = UserData(
+        rriot=rriot,
+        uid=saved_user.get("uid"), tokentype=saved_user.get("tokentype"),
+        token=saved_user.get("token"), rruid=saved_user.get("rruid"),
+        region=saved_user.get("region"), countrycode=saved_user.get("countrycode"),
+        country=saved_user.get("country"), nickname=saved_user.get("nickname"),
+        tuya_device_state=saved_user.get("tuya_device_state"),
+        avatarurl=saved_user.get("avatarurl"),
+    )
+    return UserParams(username=account["email"], user_data=user_data)
+
+
+async def connect_device() -> None:
+    if not CREDENTIALS_FILE.exists():
+        raise FileNotFoundError(f"Credentials file not found: {CREDENTIALS_FILE}")
+    raw = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+    params = build_user_params(raw)
+    manager = await create_device_manager(params, prefer_cache=False)
+    devices = await manager.get_devices()
+    if not devices:
+        raise RuntimeError("Roborock account returned no devices")
+    device = next((d for d in devices if "Saros 20" in str(getattr(d, "name", ""))), devices[0])
+    if state["manager"] is not None:
+        try:
+            await state["manager"].close()
+        except Exception:
+            log.exception("Error closing previous device manager")
+    state["manager"] = manager
+    state["device"] = device
+    state["status"] = device.v1_properties.status
+    log.info("Connected to device: %s", getattr(device, "name", "Roborock"))
+
+
+def current_status_data(status: Any, device: Any) -> dict[str, Any]:
+    state_value = getattr(status, "state", None)
+    charge_value = getattr(status, "charge_status", None)
+    cleaning_value = getattr(status, "in_cleaning", None)
+    battery = getattr(status, "battery", None)
+    clean_area = number(getattr(status, "clean_area", 0))
+    clean_time = getattr(status, "clean_time", None)
+    clean_percent = getattr(status, "clean_percent", None)
+    returning = getattr(status, "in_returning", None)
+    error_value = getattr(status, "error_code", None)
+    dock_error = getattr(status, "dock_error_status", None)
+    dock_type = getattr(status, "dock_type", None)
+    map_present = getattr(status, "map_present", None)
+    mode = getattr(status, "current_cleaning_mode", None)
+
+    state_name = enum_text(state_value)
+    cleaning_name = enum_text(cleaning_value)
+    charge_name = enum_text(charge_value)
+    # Off-peak waiting is docked but deliberately not charging.
+    # On this Saros 20, state=charging with charge_status=0 and a battery
+    # below 100% is the scheduled off-peak waiting condition observed by the
+    # user. It is docked, but deliberately not drawing charge.
+    charge_raw = getattr(charge_value, "value", charge_value)
+    if "off_peak" in state_name.lower() or "waiting" in state_name.lower() or (state_name.lower() == "charging" and charge_raw in (0, "0") and battery is not None and battery < 100):
+        dock_state = "Delayed Charge"
+        charging = False
+        is_docked = True
+    elif battery == 100 and "charging" in state_name.lower():
+        dock_state = "Fully Charged"
+        charging = False
+        is_docked = True
+    elif "charging" in state_name.lower():
+        dock_state = "Charging"
+        charging = True
+        is_docked = True
+    else:
+        dock_state = state_name
+        charging = False
+        is_docked = any(x in state_name.lower() for x in ("docked", "waiting", "idle"))
+
+    mode_text = enum_text(mode)
+    if mode_text == "Unknown":
+        mode_text = "Unknown"
+
+    return {
+        "available": True,
+        "name": str(getattr(device, "name", "Roborock")),
+        "robot_state": state_name,
+        "state": state_name,
+        "battery_level": battery if battery is not None else "Unknown",
+        "battery": f"{battery}%" if battery is not None else "Unknown",
+        "is_charging": "Yes" if charging else ("No" if state_value is not None else "Unknown"),
+        "is_docked": "Yes" if is_docked else ("No" if state_value is not None else "Unknown"),
+        "dock_state": dock_state,
+        "charge_status": charge_name,
+        "activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
+        "cleaning_activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
+        "current_room": "Unknown",
+        "room": "Unknown",
+        "cleaning_mode": mode_text,
+        "cleaning_progress": clean_percent if clean_percent is not None else "Unknown",
+        "cleaning_time_minutes": clean_time if clean_time is not None else "Unknown",
+        "area_cleaned_m2": round(clean_area / 1000000, 1),
+        "error": enum_text(error_value, "Unknown"),
+        "has_error": "No" if getattr(error_value, "value", error_value) in (0, "0", None) else "Yes",
+        "dock_error": enum_text(dock_error),
+        "dock_type": enum_text(dock_type),
+        "map_present": "Yes" if map_present in (1, True, "1") else ("No" if map_present in (0, False, "0") else "Unknown"),
+        "do_not_disturb": "Yes" if getattr(status, "dnd_enabled", None) in (1, True, "1") else ("No" if getattr(status, "dnd_enabled", None) in (0, False, "0") else "Unknown"),
+        "last_refresh": datetime.now(TZ).isoformat(timespec="seconds"),
+    }
+
+
+def schedule_is_open() -> bool:
+    cfg = config()
+    now = datetime.now(TZ).time()
+    try:
+        start = time.fromisoformat(cfg["polling_start"])
+        end = time.fromisoformat(cfg["polling_end"])
+    except (ValueError, TypeError):
+        return False
+    if start <= end:
+        return start <= now <= end
+    return now >= start or now <= end
+
+
+def operation_budget_allows() -> bool:
+    cfg = config()
+    used = int(usage().get("tracked_operations", 0))
+    limit = max(1, int(cfg["daily_operation_limit"]))
+    return used < limit * int(cfg.get("stop_percent", 90)) / 100
+
+
+async def refresh_status(manual: bool = False) -> dict[str, Any]:
+    async with state["refresh_lock"]:
+        if state["status"] is None:
+            await connect_device()
+        if not manual and not schedule_is_open():
+            return state["data"]
+        if not manual and not operation_budget_allows():
+            log.warning("Polling paused: tracked-operation safety threshold reached")
+            return state["data"]
+        await state["status"].refresh()
+        data = current_status_data(state["status"], state["device"])
+        state["data"] = data
+        state["last_refresh"] = datetime.now(TZ).isoformat(timespec="seconds")
+        counts = usage()
+        counts["tracked_operations"] = int(counts.get("tracked_operations", 0)) + 1
+        write_json(USAGE_FILE, counts)
+        return data
+
+
+def status_response() -> dict[str, Any]:
+    cfg = config()
+    counts = usage()
+    used = int(counts.get("tracked_operations", 0))
+    limit = max(1, int(cfg["daily_operation_limit"]))
+    data = dict(state["data"])
+    data.update({
+        "last_refresh": state["last_refresh"] or data.get("last_refresh", "Unknown"),
+        "polling_start": cfg["polling_start"],
+        "polling_end": cfg["polling_end"],
+        "polling_interval_seconds": cfg["polling_interval_seconds"],
+        "daily_operation_limit": limit,
+        "tracked_operations_today": used,
+        "api_usage_percent": round(used * 100 / limit, 1),
+        "operations_remaining": max(0, limit - used),
+        "next_refresh": "Scheduled",
+        "service_error": state["last_error"],
+    })
+    return {"data": data}
+
+
+async def scheduler() -> None:
+    while True:
+        try:
+            if schedule_is_open() and operation_budget_allows():
+                await refresh_status()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            state["last_error"] = str(exc)
+            state["data"] = {**state["data"], "available": False, "error": str(exc)}
+            log.exception("Scheduled status refresh failed")
+        await asyncio.sleep(max(30, int(config()["polling_interval_seconds"])))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    usage()
+    state["scheduler_task"] = asyncio.create_task(scheduler())
+    yield
+    task = state.get("scheduler_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    if state["manager"] is not None:
+        try:
+            await state["manager"].close()
+        except Exception:
+            log.exception("Error closing Roborock manager")
+
+
+app = FastAPI(title="Roborock Service", version="1.0.0", lifespan=lifespan)
+
+
+class ServiceConfig(BaseModel):
+    polling_start: str = "07:15"
+    polling_end: str = "21:00"
+    polling_interval_seconds: int = Field(default=60, ge=30, le=3600)
+    daily_operation_limit: int = Field(default=1000, ge=1)
+    slowdown_percent: int = Field(default=80, ge=50, le=99)
+    stop_percent: int = Field(default=90, ge=60, le=100)
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True, "connected": state["status"] is not None, "last_error": state["last_error"]}
+
+
+@app.get("/status")
+async def get_status():
+    return status_response()
+
+
+@app.get("/config")
+async def get_config():
+    return config()
+
+
+@app.put("/config")
+async def put_config(payload: ServiceConfig):
+    values = payload.model_dump()
+    try:
+        time.fromisoformat(values["polling_start"])
+        time.fromisoformat(values["polling_end"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Polling times must use HH:MM format") from exc
+    write_json(CONFIG_FILE, values)
+    return values
+
+
+@app.post("/refresh")
+async def post_refresh():
+    try:
+        data = await refresh_status(manual=True)
+        return {"ok": True, "data": data}
+    except Exception as exc:
+        state["last_error"] = str(exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    return HTMLResponse("""
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roborock Service</title><style>
+body{font:16px system-ui;max-width:760px;margin:35px auto;padding:0 18px;background:#f5f6f8;color:#20242a}
+main{background:white;padding:24px;border-radius:14px;box-shadow:0 2px 12px #0001}
+button{background:#1769aa;color:white;border:0;padding:12px 18px;border-radius:8px;font-size:16px}
+pre{white-space:pre-wrap;background:#f1f3f5;padding:14px;border-radius:8px}
+</style></head><body><main><h1>Roborock Service</h1>
+<p>Separate service for FiestaBoard. Roborock credentials remain on this NAS.</p>
+<button onclick="refreshNow()">Refresh Now</button><h2>Current status</h2><pre id="status">Loading…</pre>
+<h2>Polling configuration</h2><pre id="config">Loading…</pre>
+<script>
+async function load(){try{let s=await fetch('/status').then(r=>r.json());document.getElementById('status').textContent=JSON.stringify(s.data,null,2);
+let c=await fetch('/config').then(r=>r.json());document.getElementById('config').textContent=JSON.stringify(c,null,2)}catch(e){document.getElementById('status').textContent=String(e)}}
+async function refreshNow(){document.querySelector('button').disabled=true;try{let r=await fetch('/refresh',{method:'POST'});let j=await r.json();if(!r.ok)alert(j.detail||'Refresh failed')}finally{document.querySelector('button').disabled=false;load()}}
+load();setInterval(load,15000);
+</script></main></body></html>""")
+
+
