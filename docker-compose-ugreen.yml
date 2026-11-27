@@ -1,6 +1,6 @@
 services:
   roborock-service:
-    image: ghcr.io/peterdgreenway/roborock-service:1.0.1
+    image: ghcr.io/peterdgreenway/roborock-service:1.0.6
     container_name: roborock-service
     platform: linux/amd64
     ports:
