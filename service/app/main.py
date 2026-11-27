@@ -180,7 +180,7 @@ async def connect_device() -> None:
     log.info("Connected to device: %s", getattr(device, "name", "Roborock"))
 
 
-def current_status_data(status: Any, device: Any) -> dict[str, Any]:
+def current_status_data(status: Any, device: Any, current_room: str = "Unknown") -> dict[str, Any]:
     state_value = getattr(status, "state", None)
     charge_value = getattr(status, "charge_status", None)
     cleaning_value = getattr(status, "in_cleaning", None)
@@ -246,8 +246,8 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
         "charge_status": charge_name,
         "activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
         "cleaning_activity": "Returning to dock" if str(returning).lower() in ("1", "true") else ("Idle" if cleaning_name.lower() in ("complete", "none", "unknown") else cleaning_name),
-        "current_room": "Unknown",
-        "room": "Unknown",
+        "current_room": current_room,
+        "room": current_room,
         "cleaning_mode": mode_text,
         "cleaning_progress": clean_percent if clean_percent is not None else "Unknown",
         # Status clean_time is reported by Roborock in seconds.
@@ -314,6 +314,38 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
             log.warning("Polling paused: tracked-operation safety threshold reached")
             return state["data"]
         await state["status"].refresh()
+
+        # During cleaning, map content exposes the active room as vacuum_room.
+        # Resolve that segment ID against the current map's room names.
+        current_room = "Unknown"
+        robot_state = getattr(state["status"], "state", None)
+        state_code = getattr(robot_state, "value", robot_state)
+        if state_code in (5, 18, "5", "18"):
+            properties = state["device"].v1_properties
+            map_content = getattr(properties, "map_content", None)
+            try:
+                if map_content is not None:
+                    await map_content.refresh()
+                map_data = getattr(map_content, "map_data", None) if map_content is not None else None
+                vacuum_room = getattr(map_data, "vacuum_room", None)
+                if vacuum_room is not None:
+                    home = getattr(properties, "home", None)
+                    current_map_data = getattr(home, "current_map_data", None) if home is not None else None
+                    rooms = getattr(current_map_data, "rooms", None) or []
+                    if not rooms:
+                        maps = getattr(properties, "maps", None)
+                        map_info = getattr(maps, "current_map_info", None) if maps is not None else None
+                        if home is not None and map_info is not None:
+                            refreshed_map_info = await home._refresh_map_info(map_info)
+                            rooms = getattr(refreshed_map_info, "rooms", None) or []
+                    for room in rooms:
+                        segment_id = getattr(room, "segment_id", getattr(room, "id", None))
+                        if str(segment_id) == str(vacuum_room):
+                            current_room = str(getattr(room, "name", "Unknown"))
+                            break
+            except Exception as exc:
+                log.warning("Could not resolve current cleaning room: %s", exc)
+
         # Lifetime totals are provided by the separate clean-summary trait.
         # Refresh it independently so the totals do not get confused with the
         # current/last cleaning session values in Status.
@@ -323,7 +355,7 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
                 await clean_summary.refresh()
             except Exception:
                 log.exception("Could not refresh Roborock cleaning summary; retaining unavailable totals")
-        data = current_status_data(state["status"], state["device"])
+        data = current_status_data(state["status"], state["device"], current_room)
         state["data"] = data
         state["last_refresh"] = datetime.now(TZ).isoformat(timespec="seconds")
         counts = usage()
@@ -401,7 +433,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.3", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.4", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
@@ -467,6 +499,17 @@ async def get_room_diagnostic():
             room_refresh_error = f"{type(exc).__name__}: {exc}"
             log.warning("Current-map room refresh failed: %s", room_refresh_error)
 
+    map_content = getattr(properties, "map_content", None)
+    map_content_error = None
+    try:
+        if map_content is not None:
+            await map_content.refresh()
+    except Exception as exc:
+        map_content_error = f"{type(exc).__name__}: {exc}"
+        log.warning("Current map content refresh failed: %s", map_content_error)
+    map_data = getattr(map_content, "map_data", None) if map_content is not None else None
+    vacuum_room = getattr(map_data, "vacuum_room", None) if map_data is not None else None
+
     segment_status = None
     command_error = None
     try:
@@ -524,6 +567,8 @@ async def get_room_diagnostic():
         "room_refresh_error": room_refresh_error,
         "get_segment_status": diagnostic_value(segment_status),
         "get_segment_status_error": command_error,
+        "map_content_error": map_content_error,
+        "map_vacuum_room": diagnostic_value(vacuum_room),
         "status_fields": status_object,
         "trait_diagnostics": trait_diagnostics,
     }
