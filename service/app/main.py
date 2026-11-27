@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -27,12 +27,10 @@ USAGE_FILE = DATA_DIR / "api_usage.json"
 TZ = ZoneInfo("Europe/London")
 
 DEFAULT_CONFIG = {
-    "polling_start": "07:15",
-    "polling_end": "21:00",
-    "polling_interval_seconds": 60,
-    "daily_operation_limit": 1000,
-    "slowdown_percent": 80,
-    "stop_percent": 90,
+    "night_start": "03:00", "night_end": "04:00", "night_interval_seconds": 900,
+    "peak_start": "07:30", "peak_end": "10:30", "peak_interval_seconds": 600,
+    "default_interval_seconds": 3600, "daily_operation_limit": 1000,
+    "slowdown_percent": 80, "stop_percent": 90,
 }
 state: dict[str, Any] = {
     "manager": None, "device": None, "status": None,
@@ -249,17 +247,32 @@ def current_status_data(status: Any, device: Any) -> dict[str, Any]:
     }
 
 
-def schedule_is_open() -> bool:
+def seconds_until_next_refresh(now: datetime | None = None) -> float:
+    """Return seconds until the next wall-clock-aligned refresh slot."""
     cfg = config()
-    now = datetime.now(TZ).time()
-    try:
-        start = time.fromisoformat(cfg["polling_start"])
-        end = time.fromisoformat(cfg["polling_end"])
-    except (ValueError, TypeError):
-        return False
-    if start <= end:
-        return start <= now <= end
-    return now >= start or now <= end
+    now = now or datetime.now(TZ)
+    segments = [
+        (cfg["night_start"], cfg["night_end"], int(cfg["night_interval_seconds"])),
+        ("04:00", cfg["peak_start"], int(cfg["default_interval_seconds"])),
+        (cfg["peak_start"], cfg["peak_end"], int(cfg["peak_interval_seconds"])),
+        (cfg["peak_end"], cfg["night_start"], int(cfg["default_interval_seconds"])),
+    ]
+    candidates: list[datetime] = []
+    for day_offset in (0, 1, 2):
+        day = now.date() + timedelta(days=day_offset)
+        for start_text, end_text, interval in segments:
+            start_clock, end_clock = time.fromisoformat(start_text), time.fromisoformat(end_text)
+            start = datetime.combine(day, start_clock, tzinfo=TZ)
+            end = datetime.combine(day, end_clock, tzinfo=TZ)
+            if end_clock <= start_clock:
+                end += timedelta(days=1)
+            slot = start
+            while slot < end:
+                if slot > now:
+                    candidates.append(slot)
+                    break
+                slot += timedelta(seconds=max(30, interval))
+    return max(1.0, (min(candidates) - now).total_seconds()) if candidates else 3600.0
 
 
 def operation_budget_allows() -> bool:
@@ -273,8 +286,6 @@ async def refresh_status(manual: bool = False) -> dict[str, Any]:
     async with state["refresh_lock"]:
         if state["status"] is None:
             await connect_device()
-        if not manual and not schedule_is_open():
-            return state["data"]
         if not manual and not operation_budget_allows():
             log.warning("Polling paused: tracked-operation safety threshold reached")
             return state["data"]
@@ -305,9 +316,13 @@ def status_response() -> dict[str, Any]:
     data = dict(state["data"])
     data.update({
         "last_refresh": state["last_refresh"] or data.get("last_refresh", "Unknown"),
-        "polling_start": cfg["polling_start"],
-        "polling_end": cfg["polling_end"],
-        "polling_interval_seconds": cfg["polling_interval_seconds"],
+        "night_start": cfg["night_start"],
+        "night_end": cfg["night_end"],
+        "night_interval_seconds": cfg["night_interval_seconds"],
+        "peak_start": cfg["peak_start"],
+        "peak_end": cfg["peak_end"],
+        "peak_interval_seconds": cfg["peak_interval_seconds"],
+        "default_interval_seconds": cfg["default_interval_seconds"],
         "daily_operation_limit": limit,
         "tracked_operations_today": used,
         "api_usage_percent": round(used * 100 / limit, 1),
@@ -321,7 +336,7 @@ def status_response() -> dict[str, Any]:
 async def scheduler() -> None:
     while True:
         try:
-            if schedule_is_open() and operation_budget_allows():
+            if operation_budget_allows():
                 await refresh_status()
         except asyncio.CancelledError:
             raise
@@ -332,10 +347,10 @@ async def scheduler() -> None:
         cfg = config()
         used = int(usage().get("tracked_operations", 0))
         limit = max(1, int(cfg["daily_operation_limit"]))
-        interval = max(30, int(cfg["polling_interval_seconds"]))
+        delay = seconds_until_next_refresh()
         if used >= limit * int(cfg.get("slowdown_percent", 80)) / 100:
-            interval *= 2
-        await asyncio.sleep(interval)
+            delay = max(delay, int(cfg["default_interval_seconds"]) * 2)
+        await asyncio.sleep(delay)
 
 
 @asynccontextmanager
@@ -362,9 +377,13 @@ app = FastAPI(title="Roborock Service", version="1.0.0", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
-    polling_start: str = "07:15"
-    polling_end: str = "21:00"
-    polling_interval_seconds: int = Field(default=60, ge=30, le=3600)
+    night_start: str = "03:00"
+    night_end: str = "04:00"
+    night_interval_seconds: int = Field(default=900, ge=30, le=86400)
+    peak_start: str = "07:30"
+    peak_end: str = "10:30"
+    peak_interval_seconds: int = Field(default=600, ge=30, le=86400)
+    default_interval_seconds: int = Field(default=3600, ge=30, le=86400)
     daily_operation_limit: int = Field(default=1000, ge=1)
     slowdown_percent: int = Field(default=80, ge=50, le=99)
     stop_percent: int = Field(default=90, ge=60, le=100)
@@ -389,10 +408,14 @@ async def get_config():
 async def put_config(payload: ServiceConfig):
     values = payload.model_dump()
     try:
-        time.fromisoformat(values["polling_start"])
-        time.fromisoformat(values["polling_end"])
+        for key in ("night_start", "night_end", "peak_start", "peak_end"):
+            time.fromisoformat(values[key])
+        if time.fromisoformat(values["night_start"]) >= time.fromisoformat(values["night_end"]):
+            raise ValueError("Night window must not cross midnight")
+        if time.fromisoformat(values["peak_start"]) >= time.fromisoformat(values["peak_end"]):
+            raise ValueError("Peak window must not cross midnight")
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Polling times must use HH:MM format") from exc
+        raise HTTPException(status_code=400, detail="Schedule times must use HH:MM and special windows must end after they start") from exc
     write_json(CONFIG_FILE, values)
     return values
 
