@@ -439,7 +439,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.5", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.6", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
