@@ -401,7 +401,7 @@ async def lifespan(app: FastAPI):
             log.exception("Error closing Roborock manager")
 
 
-app = FastAPI(title="Roborock Service", version="1.0.1", lifespan=lifespan)
+app = FastAPI(title="Roborock Service", version="1.0.2", lifespan=lifespan)
 
 
 class ServiceConfig(BaseModel):
@@ -437,21 +437,35 @@ async def get_room_diagnostic():
     home = getattr(properties, "home", None)
     maps = getattr(properties, "maps", None)
     current_map = getattr(maps, "current_map", None) if maps is not None else None
-    home_map_info = getattr(home, "home_map_info", None) if home is not None else None
-
     room_maps = []
-    for map_flag, map_info in (home_map_info or {}).items():
-        room_maps.append({
-            "map_flag": map_flag,
-            "map_name": getattr(map_info, "name", None),
-            "rooms": [
-                {
-                    "segment_id": getattr(room, "segment_id", None),
-                    "name": getattr(room, "name", None),
-                }
-                for room in (getattr(map_info, "rooms", None) or [])
-            ],
-        })
+    room_refresh_error = None
+    if home is not None and maps is not None:
+        try:
+            # Refresh only the current map's room mapping. Do not call
+            # home.refresh()/discover_home() here: during segment_cleaning
+            # the library's discovery guard does not recognise state 18
+            # as generic cleaning and could attempt to switch maps.
+            await maps.refresh()
+            current_map = getattr(maps, "current_map", current_map)
+            current_map_info = getattr(maps, "current_map_info", None)
+            if current_map_info is not None:
+                refreshed_map_info = await home._refresh_map_info(current_map_info)
+                room_maps.append({
+                    "map_flag": current_map,
+                    "map_name": getattr(refreshed_map_info, "name", None),
+                    "rooms": [
+                        {
+                            "segment_id": getattr(room, "segment_id", None),
+                            "name": getattr(room, "name", None),
+                        }
+                        for room in (getattr(refreshed_map_info, "rooms", None) or [])
+                    ],
+                })
+            else:
+                room_refresh_error = "No current map information returned by maps.refresh()"
+        except Exception as exc:
+            room_refresh_error = f"{type(exc).__name__}: {exc}"
+            log.warning("Current-map room refresh failed: %s", room_refresh_error)
 
     segment_status = None
     command_error = None
@@ -467,6 +481,7 @@ async def get_room_diagnostic():
         "robot_state": enum_text(getattr(state["status"], "state", None)),
         "current_map_flag": current_map,
         "room_maps": diagnostic_value(room_maps),
+        "room_refresh_error": room_refresh_error,
         "get_segment_status": diagnostic_value(segment_status),
         "get_segment_status_error": command_error,
         "status_fields": {
