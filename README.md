@@ -1,60 +1,39 @@
 # Robot Vacuum (Roborock) – FiestaBoard
 
-Version **1.5.0** adds normalised, human-readable status fields intended for use in FiestaBoard templates. It has been developed against the Roborock Saros 20 and the `python-roborock` V1 API.
+**Version 2.0.0** connects FiestaBoard to the separate Roborock Service running on your NAS. The service owns Roborock authentication, device connections, polling, schedule enforcement and tracked-operation accounting. FiestaBoard does not connect directly to Roborock.
 
-## Example Vestaboard Note
+## Architecture
+
+- **Roborock Service:** runs separately from FiestaBoard, normally at `http://192.168.100.99:8088`.
+- **FiestaBoard plugin:** reads `/status` and synchronises the schedule through `/config`.
+- **Refresh Now:** available on the service dashboard at the service URL. The data-plugin interface does not document a native settings-page action button; the plugin includes a callable `refresh_now()` helper but does not claim to render a FiestaBoard button.
+
+## Configure
+
+1. Deploy and test the Roborock Service first.
+2. Install this repository through FiestaBoard's GitHub plugin installer.
+3. Set **Roborock service URL** to `http://192.168.100.99:8088`.
+4. Set the polling window and interval. Defaults are 07:15–21:00 and 60 seconds.
+5. Save and confirm the plugin can read the service status.
+
+The service should remain LAN-only. Do not forward port 8088 from your router or expose it to the public internet.
+
+## Variables
+
+`battery_level`, `battery`, `is_charging`, `is_docked`, `dock_state`, `robot_state`, `activity`, `cleaning_activity`, `current_room`, `room`, `cleaning_mode`, `cleaning_progress`, `cleaning_time_minutes`, `area_cleaned_m2`, `do_not_disturb`, `map_present`, `error`, `has_error`, `last_refresh`, `polling_start`, `polling_end`, `polling_interval_seconds`, `tracked_operations_today`, `daily_operation_limit`, `api_usage_percent`, `operations_remaining`, `next_refresh`.
+
+Boolean values are presented as Yes/No/Unknown where possible. Missing room or status values remain Unknown rather than being guessed.
+
+## Note layout
 
 ```text
-SAROS 20 - 34%
-VACUUMING
-KITCHEN
+{{robot_vacuum.line1}}
+{{robot_vacuum.line2}}
+{{robot_vacuum.line3}}
 ```
 
-Use the `line1`, `line2` and `line3` variables for the ready-made 3 × 15 character lines, or compose your own display from the individual fields.
+## Usage accounting qualification
 
-## Fields
+The service reports **tracked operations** initiated by the service. It cannot count every internal HTTP/MQTT exchange performed inside python-roborock. The default limit of 1,000 is a configurable local safety ceiling, not a published Roborock quota.
 
-| Variable | Example | Meaning |
-|---|---|---|
-| `name` | `Roborock Saros 20` | Device name |
-| `battery_level` | `34` | Battery percentage as a number |
-| `battery` | `34%` | Battery with percent sign |
-| `is_charging` | `Yes` / `No` / `Unknown` | Actual charging state; delayed charging is not treated as charging |
-| `is_docked` | `Yes` / `No` / `Unknown` | Whether docked, independently of charging |
-| `dock_state` | `Charging`, `Delayed Charge`, `Fully Charged` | Human-readable dock state |
-| `robot_state` | `cleaning`, `charging`, `returning` | Normalised robot state |
-| `activity` | `Cleaning`, `Charging` | General robot activity/state |
-| `cleaning_activity` | `Vacuuming`, `Mopping`, `Vac & Mop`, `Cruise` | Cleaning action inferred from the selected cleaning mode |
-| `current_room` | `Kitchen` | Resolved current room name, or `Unknown` |
-| `room` | `Kitchen` | Alias for `current_room` |
-| `cleaning_mode` | `Vac then Mop`, `Vac And Mop`, `Mop`, `Vacuum`, `Cruise` | Human-readable selected mode when exposed by the API |
-| `cleaning_progress` | `65` | Cleaning progress percentage |
-| `cleaning_time_minutes` | `18.0` | Elapsed cleaning time in minutes |
-| `area_cleaned_m2` | `24.5` | Area cleaned in square metres |
-| `do_not_disturb` | `Yes` / `No` / `Unknown` | DND enabled state |
-| `map_present` | `Yes` / `No` / `Unknown` | Map-present flag |
-| `error` | `None` | Error description |
-| `has_error` | `Yes` / `No` | Whether an error is reported |
-
-Boolean values are exposed as **Yes**, **No** or **Unknown**. Missing data is never silently converted to No.
-
-## Dock and mode labels
-
-The plugin uses these exact display labels where the Roborock API supplies a recognised value:
-
-- Dock: `Charging`, `Delayed Charge`, `Fully Charged`
-- Cleaning mode: `Vac then Mop`, `Vac And Mop`, `Mop`, `Vacuum`, `Cruise`
-
-A docked robot waiting for its configured off-peak charging window is reported as `Delayed Charge` and `is_charging: No`.
-
-## Room, routines and zones
-
-Room names are resolved from available current-segment and map/room information when the installed library and firmware expose it. If the current room cannot be matched confidently, the field is `Unknown` rather than a guessed room. Routines and user-defined multi-room zones are not yet executed or separately represented in this release; they are a subsequent development item.
-
-## Connection lifecycle
-
-Each refresh creates, uses and closes its Roborock device manager within one asyncio event loop. This avoids reusing MQTT tasks and connections across the separate event loops created by repeated synchronous FiestaBoard refresh calls.
-
-## Setup
-
-See `docs/SETUP.md` for the credential setup process. Keep the UserData JSON private and never include it in diagnostic logs or screenshots.
+See [docs/SETUP.md](docs/SETUP.md) for setup and troubleshooting.
