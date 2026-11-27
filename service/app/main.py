@@ -276,7 +276,13 @@ async def scheduler() -> None:
             state["last_error"] = str(exc)
             state["data"] = {**state["data"], "available": False, "error": str(exc)}
             log.exception("Scheduled status refresh failed")
-        await asyncio.sleep(max(30, int(config()["polling_interval_seconds"])))
+        cfg = config()
+        used = int(usage().get("tracked_operations", 0))
+        limit = max(1, int(cfg["daily_operation_limit"]))
+        interval = max(30, int(cfg["polling_interval_seconds"]))
+        if used >= limit * int(cfg.get("slowdown_percent", 80)) / 100:
+            interval *= 2
+        await asyncio.sleep(interval)
 
 
 @asynccontextmanager
