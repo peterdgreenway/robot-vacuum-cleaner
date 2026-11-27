@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 LONDON_TZ = ZoneInfo("Europe/London")
 
 
-def _text(value: Any, default: str = "Unknown") -> str:
+def _text(value: Any, default: str = "NOT AVAILABLE") -> str:
     if value is None or value == "":
         return default
     if isinstance(value, bool):
@@ -34,8 +34,8 @@ def _fit(value: Any, width: int = 15) -> str:
 
 def _timestamp_parts(value: Any) -> Dict[str, str]:
     """Return London-local date, time and combined timestamp strings."""
-    unknown = {"date": "Unknown", "time": "Unknown", "datetime": "Unknown"}
-    if value in (None, "", "Unknown"):
+    unknown = {"date": "NOT AVAILABLE", "time": "NOT AVAILABLE", "datetime": "NOT AVAILABLE"}
+    if value in (None, "", "NOT AVAILABLE"):
         return unknown
     try:
         if isinstance(value, (int, float)):
@@ -77,7 +77,7 @@ def _display_activity(data: Dict[str, Any]) -> str:
         return "CHARGING"
     if str(data.get("is_docked", "")).lower() in ("yes", "true") or state in ("idle", "sleeping"):
         return "DOCKED"
-    if activity and activity not in ("unknown", "none"):
+    if activity and activity not in ("not available", "none"):
         return activity.replace("_", " ").upper()
     return "IDLE"
 
@@ -89,8 +89,8 @@ class RobotVacuumPlugin(PluginBase):
         super().__init__(manifest)
         self._cache: Dict[str, Any] = {}
         self._cache_ts = 0.0
-        self._last_run_room = "Unknown"
-        self._last_run_operation = "Unknown"
+        self._last_run_room = "NOT AVAILABLE"
+        self._last_run_operation = "NOT AVAILABLE"
 
     @property
     def plugin_id(self) -> str:
@@ -160,7 +160,7 @@ class RobotVacuumPlugin(PluginBase):
 
             status = self._request("/status")
             data = dict(status.get("data", status))
-            data.setdefault("last_refresh", data.get("last_updated", "Unknown"))
+            data.setdefault("last_refresh", data.get("last_updated", "NOT AVAILABLE"))
             last_run = _timestamp_parts(data.get("last_clean_run"))
             data["last_run_date"] = last_run["date"]
             data["last_run_time"] = last_run["time"]
@@ -170,15 +170,15 @@ class RobotVacuumPlugin(PluginBase):
             data["last_refresh_time"] = last_refresh["time"]
             data["last_refresh_datetime"] = last_refresh["datetime"]
             data["total_cleaning_time"] = _text(data.get("total_cleaning_time"))
-            data["total_cleaned_area_m2"] = data.get("total_cleaned_area_m2", "Unknown")
+            data["total_cleaned_area_m2"] = data.get("total_cleaned_area_m2", "NOT AVAILABLE")
             for key, value in schedule.items():
                 data.setdefault(key, value)
 
-            battery = data.get("battery_level", data.get("battery", "Unknown"))
+            battery = data.get("battery_level", data.get("battery", "NOT AVAILABLE"))
             if isinstance(battery, str) and battery.endswith("%"):
                 battery = battery[:-1]
             data["battery_level"] = battery
-            data["battery"] = f"{battery}%" if str(battery).isdigit() else _text(data.get("battery"), "Unknown")
+            data["battery"] = f"{battery}%" if str(battery).isdigit() else _text(data.get("battery"), "NOT AVAILABLE")
             for key in ("is_charging", "is_docked", "do_not_disturb", "map_present", "has_error"):
                 data[key] = _text(data.get(key))
             data["current_room"] = _text(data.get("current_room", data.get("room")))
@@ -192,7 +192,7 @@ class RobotVacuumPlugin(PluginBase):
             active_clean = state in ("segment_cleaning", "cleaning") or "segment_clean" in activity_code
             if active_clean:
                 room = data["current_room"]
-                if room and room.lower() not in ("unknown", "none", "n/a"):
+                if room and room.lower() not in ("not available", "none", "n/a"):
                     self._last_run_room = room
                 operation_labels = {
                     "vacuum": "VACUUM",
@@ -202,17 +202,17 @@ class RobotVacuumPlugin(PluginBase):
                 }
                 if mode in operation_labels:
                     self._last_run_operation = operation_labels[mode]
-                elif self._last_run_operation == "Unknown":
+                elif self._last_run_operation == "NOT AVAILABLE":
                     self._last_run_operation = "CLEANING"
 
             # Accept service-provided history as an initial value if available.
-            if self._last_run_room == "Unknown":
+            if self._last_run_room == "NOT AVAILABLE":
                 supplied_room = data.get("last_run_room")
-                if supplied_room and str(supplied_room).lower() not in ("unknown", "none", "n/a"):
+                if supplied_room and str(supplied_room).lower() not in ("not available", "none", "n/a"):
                     self._last_run_room = str(supplied_room)
-            if self._last_run_operation == "Unknown":
+            if self._last_run_operation == "NOT AVAILABLE":
                 supplied_operation = data.get("last_run_operation")
-                if supplied_operation and str(supplied_operation).lower() not in ("unknown", "none", "n/a"):
+                if supplied_operation and str(supplied_operation).lower() not in ("not available", "none", "n/a"):
                     self._last_run_operation = str(supplied_operation)
 
             data["last_run_room"] = self._last_run_room
