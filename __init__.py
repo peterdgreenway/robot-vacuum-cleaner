@@ -47,6 +47,8 @@ def _display_activity(data: Dict[str, Any]) -> str:
         return "CLEANING"
     if "return" in state or "return" in activity:
         return "RETURNING"
+    if state == "cruising" or activity == "cruising":
+        return "CRUISING"
     if "wash" in state or "wash" in activity or "wash" in dock_state:
         return "WASHING MOP"
     if state in ("charging", "charge") or "charging" in activity:
