@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 from contextlib import asynccontextmanager
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -15,6 +17,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from roborock.data.containers import UserData, RRiot, Reference
+from roborock.roborock_typing import RoborockCommand
 from roborock.devices.device_manager import UserParams, create_device_manager
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -108,6 +111,27 @@ def format_duration(seconds: float | None) -> str:
     if minutes:
         return f"{minutes}m {secs}s"
     return f"{secs}s"
+
+
+def diagnostic_value(value: Any) -> Any:
+    """Convert library objects into JSON-safe diagnostic data."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Enum):
+        return diagnostic_value(value.value)
+    if is_dataclass(value):
+        return diagnostic_value(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): diagnostic_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [diagnostic_value(item) for item in value]
+    if hasattr(value, "__dict__"):
+        return {
+            key: diagnostic_value(item)
+            for key, item in vars(value).items()
+            if not key.startswith("_")
+        }
+    return str(value)
 
 
 def build_user_params(raw: dict[str, Any]) -> UserParams:
@@ -401,6 +425,57 @@ async def health():
 @app.get("/status")
 async def get_status():
     return status_response()
+
+
+@app.get("/diagnostics/room")
+async def get_room_diagnostic():
+    """Read-only diagnostic for identifying the room currently being cleaned."""
+    if state["status"] is None or state["device"] is None:
+        raise HTTPException(status_code=503, detail="Roborock device is not connected")
+
+    properties = state["device"].v1_properties
+    home = getattr(properties, "home", None)
+    maps = getattr(properties, "maps", None)
+    current_map = getattr(maps, "current_map", None) if maps is not None else None
+    home_map_info = getattr(home, "home_map_info", None) if home is not None else None
+
+    room_maps = []
+    for map_flag, map_info in (home_map_info or {}).items():
+        room_maps.append({
+            "map_flag": map_flag,
+            "map_name": getattr(map_info, "name", None),
+            "rooms": [
+                {
+                    "segment_id": getattr(room, "segment_id", None),
+                    "name": getattr(room, "name", None),
+                }
+                for room in (getattr(map_info, "rooms", None) or [])
+            ],
+        })
+
+    segment_status = None
+    command_error = None
+    try:
+        segment_status = await properties.command.send(RoborockCommand.GET_SEGMENT_STATUS)
+    except Exception as exc:
+        command_error = f"{type(exc).__name__}: {exc}"
+        log.warning("GET_SEGMENT_STATUS diagnostic request failed: %s", command_error)
+
+    return {
+        "diagnostic_time": datetime.now(TZ).isoformat(timespec="seconds"),
+        "device": str(getattr(state["device"], "name", "Roborock")),
+        "robot_state": enum_text(getattr(state["status"], "state", None)),
+        "current_map_flag": current_map,
+        "room_maps": diagnostic_value(room_maps),
+        "get_segment_status": diagnostic_value(segment_status),
+        "get_segment_status_error": command_error,
+        "status_fields": {
+            "current_map": diagnostic_value(getattr(state["status"], "current_map", None)),
+            "state": diagnostic_value(getattr(state["status"], "state", None)),
+            "in_cleaning": diagnostic_value(getattr(state["status"], "in_cleaning", None)),
+            "clean_percent": diagnostic_value(getattr(state["status"], "clean_percent", None)),
+        },
+    }
 
 
 @app.get("/config")
