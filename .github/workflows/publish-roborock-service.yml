@@ -38,5 +38,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/roborock-service:1.0.3
+            ghcr.io/${{ github.repository_owner }}/roborock-service:1.0.4
             ghcr.io/${{ github.repository_owner }}/roborock-service:latest
