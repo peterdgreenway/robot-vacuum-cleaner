@@ -10,12 +10,14 @@ import logging
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List
 from urllib.parse import urljoin
 
 from src.plugins.base import PluginBase, PluginResult
 
 logger = logging.getLogger(__name__)
+LONDON_TZ = ZoneInfo("Europe/London")
 
 
 def _text(value: Any, default: str = "Unknown") -> str:
@@ -28,6 +30,26 @@ def _text(value: Any, default: str = "Unknown") -> str:
 
 def _fit(value: Any, width: int = 15) -> str:
     return _text(value, "").upper().strip()[:width]
+
+
+def _timestamp_parts(value: Any) -> Dict[str, str]:
+    """Return London-local date, time and combined timestamp strings."""
+    unknown = {"date": "Unknown", "time": "Unknown", "datetime": "Unknown"}
+    if value in (None, "", "Unknown"):
+        return unknown
+    try:
+        if isinstance(value, (int, float)):
+            stamp = datetime.fromtimestamp(value, tz=timezone.utc)
+        else:
+            stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=LONDON_TZ)
+        stamp = stamp.astimezone(LONDON_TZ)
+        date_text = stamp.strftime("%d-%b-%y").upper()
+        time_text = stamp.strftime("%H:%M")
+        return {"date": date_text, "time": time_text, "datetime": f"{date_text} {time_text}"}
+    except (TypeError, ValueError, OverflowError, OSError):
+        return unknown
 
 
 def _display_activity(data: Dict[str, Any]) -> str:
@@ -137,6 +159,16 @@ class RobotVacuumPlugin(PluginBase):
             status = self._request("/status")
             data = dict(status.get("data", status))
             data.setdefault("last_refresh", data.get("last_updated", "Unknown"))
+            last_run = _timestamp_parts(data.get("last_clean_run"))
+            data["last_run_date"] = last_run["date"]
+            data["last_run_time"] = last_run["time"]
+            data["last_run_datetime"] = last_run["datetime"]
+            last_refresh = _timestamp_parts(data.get("last_refresh"))
+            data["last_refresh_date"] = last_refresh["date"]
+            data["last_refresh_time"] = last_refresh["time"]
+            data["last_refresh_datetime"] = last_refresh["datetime"]
+            data["total_cleaning_time"] = _text(data.get("total_cleaning_time"))
+            data["total_cleaned_area_m2"] = data.get("total_cleaned_area_m2", "Unknown")
             for key, value in schedule.items():
                 data.setdefault(key, value)
 
