@@ -105,12 +105,10 @@ def format_duration(seconds: float | None) -> str:
         return "Unknown"
     total = int(round(seconds))
     hours, remainder = divmod(total, 3600)
-    minutes, secs = divmod(remainder, 60)
+    minutes = remainder // 60
     if hours:
-        return f"{hours}h {minutes}m {secs}s"
-    if minutes:
-        return f"{minutes}m {secs}s"
-    return f"{secs}s"
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
 
 
 def diagnostic_value(value: Any) -> Any:
@@ -196,6 +194,13 @@ def current_status_data(status: Any, device: Any, current_room: str = "Unknown")
     if total_area_m2 is not None:
         total_area_m2 = number(total_area_m2)
     total_clean_count = getattr(clean_summary, "clean_count", None)
+    clean_records = getattr(clean_summary, "records", None) or []
+    clean_timestamps = [number(record, -1) for record in clean_records]
+    clean_timestamps = [stamp for stamp in clean_timestamps if stamp > 0]
+    last_clean_run = (
+        datetime.fromtimestamp(max(clean_timestamps), TZ).isoformat(timespec="seconds")
+        if clean_timestamps else "Unknown"
+    )
     clean_percent = getattr(status, "clean_percent", None)
     returning = getattr(status, "in_returning", None)
     error_value = getattr(status, "error_code", None)
@@ -261,6 +266,7 @@ def current_status_data(status: Any, device: Any, current_room: str = "Unknown")
         "total_cleaning_time": format_duration(total_time_seconds),
         "total_cleaned_area_m2": round(number(total_area_m2), 1) if total_area_m2 is not None else "Unknown",
         "total_cleaning_count": total_clean_count if total_clean_count is not None else "Unknown",
+        "last_clean_run": last_clean_run,
         "error": enum_text(error_value, "Unknown"),
         "has_error": "No" if getattr(error_value, "value", error_value) in (0, "0", None) else "Yes",
         "dock_error": enum_text(dock_error),
