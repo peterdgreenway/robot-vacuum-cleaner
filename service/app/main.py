@@ -245,6 +245,11 @@ async def connect_device() -> None:
 
 
 def current_status_data(status: Any, device: Any, current_room: str = "Unknown") -> dict[str, Any]:
+    # Keep the room fields consistent when the robot is idle or no map room is available.
+    current_room = str(current_room or "").strip()
+    if current_room.lower() in ("", "unknown", "not available"):
+        current_room = "NOT AVAILABLE"
+
     state_value = getattr(status, "state", None)
     charge_value = getattr(status, "charge_status", None)
     cleaning_value = getattr(status, "in_cleaning", None)
