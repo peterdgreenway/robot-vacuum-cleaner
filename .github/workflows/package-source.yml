@@ -1,0 +1,86 @@
+name: Package Roborock source archives
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/package-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build source archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/work/plugin dist/work/service dist/work/handover
+
+          cp __init__.py manifest.json README.md LICENSE dist/work/plugin/
+          mkdir -p dist/work/plugin/docs dist/work/plugin/tests
+          cp docs/SETUP.md dist/work/plugin/docs/
+          cp tests/__init__.py tests/test_plugin.py dist/work/plugin/tests/
+
+          cp -R service/. dist/work/service/
+          cp docker-compose-ugreen.yml README-UGREEN.md .dockerignore dist/work/service/
+
+          cp README.md README-UGREEN.md LICENSE dist/work/handover/
+          cp -R docs dist/work/handover/
+          cp manifest.json dist/work/handover/
+          cp docker-compose-ugreen.yml dist/work/handover/
+          cp -R service dist/work/handover/
+          cp __init__.py tests dist/work/handover/
+
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FULL_SHA="$(git rev-parse HEAD)"
+          COMMIT_DATE="$(git show -s --format=%cI HEAD)"
+          cat > dist/BUILD-INFO.txt <<EOF
+          Roborock / FiestaBoard source archive set
+          Repository: https://github.com/peterdgreenway/robot-vacuum-cleaner
+          Branch: main
+          Commit: ${FULL_SHA}
+          Short commit: ${SHORT_SHA}
+          Commit date: ${COMMIT_DATE}
+
+          Archives:
+          - roborock-fiesta-integration-handover-v1.1.0.zip: combined source and handover material
+          - roborock-service-ugreen-deployment-v1.0.1.zip: Roborock service and UGREEN deployment files
+          - fiestaboard-plugin-robot-vacuum-v2.1.0.zip: FiestaBoard plugin source and tests
+
+          No Roborock credentials, tokens, runtime data, or Docker image are included.
+          The service archive contains the Dockerfile and requirements for building the image.
+          EOF
+
+          cd dist/work/plugin
+          zip -qr ../../fiestaboard-plugin-robot-vacuum-v2.1.0.zip .
+          cd ../service
+          zip -qr ../../roborock-service-ugreen-deployment-v1.0.1.zip .
+          cd ../handover
+          zip -qr ../../roborock-fiesta-integration-handover-v1.1.0.zip .
+          cd ../../
+          cp BUILD-INFO.txt work/
+          zip -qr roborock-source-package-v1.1.0.zip BUILD-INFO.txt work
+
+          cd ..
+          sha256sum dist/*.zip > dist/SHA256SUMS.txt
+          ls -lh dist
+
+      - name: Upload source archive set
+        uses: actions/upload-artifact@v4
+        with:
+          name: roborock-source-package-v1.1.0
+          path: |
+            dist/*.zip
+            dist/BUILD-INFO.txt
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
