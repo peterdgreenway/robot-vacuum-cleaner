@@ -55,14 +55,14 @@ jobs:
           Archives:
           - roborock-fiesta-integration-handover-v1.1.0.zip: combined source and handover material
           - roborock-service-ugreen-deployment-v1.0.1.zip: Roborock service and UGREEN deployment files
-          - fiestaboard-plugin-robot-vacuum-v2.1.0.zip: FiestaBoard plugin source and tests
+          - fiestaboard-plugin-robot-vacuum-v2.3.1.zip: FiestaBoard plugin source and tests
 
           No Roborock credentials, tokens, runtime data, or Docker image are included.
           The service archive contains the Dockerfile and requirements for building the image.
           EOF
 
           cd dist/work/plugin
-          zip -qr ../../fiestaboard-plugin-robot-vacuum-v2.1.0.zip .
+          zip -qr ../../fiestaboard-plugin-robot-vacuum-v2.3.1.zip .
           cd ../service
           zip -qr ../../roborock-service-ugreen-deployment-v1.0.1.zip .
           cd ../handover
